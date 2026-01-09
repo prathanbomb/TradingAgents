@@ -1,0 +1,87 @@
+name: Scheduled Trading Analysis
+
+on:
+  schedule:
+    # 9:30 AM ET = 14:30 UTC (standard time) or 13:30 UTC (daylight saving)
+    # Using 13:30 UTC to account for DST (March-November)
+    - cron: '30 13 * * 1-5'  # Weekdays at 13:30 UTC (9:30 AM EDT)
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      tickers:
+        description: 'Override tickers (comma-separated, leave empty to use tickers.txt)'
+        required: false
+        default: ''
+  repository_dispatch:  # Allow external trigger via API
+    types: [run-analysis]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # 2 hour timeout for multiple tickers
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libgdk-pixbuf2.0-0 \
+            libffi-dev \
+            shared-mime-info
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e .
+
+      - name: Run scheduled analysis
+        env:
+          # LLM Configuration
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_DEEP_THINK_MODEL: ${{ secrets.LLM_DEEP_THINK_MODEL }}
+          LLM_QUICK_THINK_MODEL: ${{ secrets.LLM_QUICK_THINK_MODEL }}
+          LLM_BACKEND_URL: ${{ secrets.LLM_BACKEND_URL }}
+
+          # Embedding Configuration
+          EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER }}
+          EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL }}
+
+          # Data Source API Keys
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
+          # Cloudflare R2 Storage
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+
+          # Reports Output
+          REPORTS_OUTPUT_DIR: ./reports
+
+          # Custom tickers (from workflow_dispatch or repository_dispatch)
+          CUSTOM_TICKERS: ${{ github.event.inputs.tickers || github.event.client_payload.tickers || '' }}
+        run: |
+          python scripts/run_scheduled_analysis.py
+
+      - name: Upload reports as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trading-reports-${{ github.run_number }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: ignore

@@ -1,9 +1,12 @@
+import logging
 from typing import Annotated
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import yfinance as yf
 import os
 from .stockstats_utils import StockstatsUtils
+
+logger = logging.getLogger(__name__)
 
 def get_YFin_data_online(
     symbol: Annotated[str, "ticker symbol of the company"],
@@ -163,7 +166,7 @@ def get_stock_stats_indicators_window(
             ind_string += f"{date_str}: {value}\n"
         
     except Exception as e:
-        print(f"Error getting bulk stockstats data: {e}")
+        logger.warning(f"Error getting bulk stockstats data: {e}")
         # Fallback to original implementation if bulk method fails
         ind_string = ""
         curr_date_dt = datetime.strptime(curr_date, "%Y-%m-%d")
@@ -285,7 +288,7 @@ def get_stockstats_indicator(
             curr_date,
         )
     except Exception as e:
-        print(
+        logger.warning(
             f"Error getting stockstats indicator data for indicator {indicator} on {curr_date}: {e}"
         )
         return ""
@@ -384,24 +387,106 @@ def get_income_statement(
 
 
 def get_insider_transactions(
-    ticker: Annotated[str, "ticker symbol of the company"]
+    ticker: Annotated[str, "ticker symbol of the company"],
+    curr_date: Annotated[str, "current date (not used for yfinance)"] = None
 ):
     """Get insider transactions data from yfinance."""
     try:
         ticker_obj = yf.Ticker(ticker.upper())
         data = ticker_obj.insider_transactions
-        
+
         if data is None or data.empty:
             return f"No insider transactions data found for symbol '{ticker}'"
-            
+
         # Convert to CSV string for consistency with other functions
         csv_string = data.to_csv()
-        
+
         # Add header information
         header = f"# Insider Transactions data for {ticker.upper()}\n"
         header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        
+
         return header + csv_string
-        
+
     except Exception as e:
         return f"Error retrieving insider transactions for {ticker}: {str(e)}"
+
+
+def get_fundamentals(
+    ticker: Annotated[str, "ticker symbol of the company"],
+    curr_date: Annotated[str, "current date (not used for yfinance)"] = None
+):
+    """Get comprehensive fundamental data summary from yfinance."""
+    try:
+        ticker_obj = yf.Ticker(ticker.upper())
+        results = []
+
+        # Add header
+        header = f"# Fundamental Data for {ticker.upper()}\n"
+        header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        results.append(header)
+
+        # Key statistics from info
+        try:
+            info = ticker_obj.info
+            results.append("=== Key Statistics ===")
+            key_stats = [
+                ("Market Cap", info.get("marketCap")),
+                ("Enterprise Value", info.get("enterpriseValue")),
+                ("P/E Ratio (Trailing)", info.get("trailingPE")),
+                ("P/E Ratio (Forward)", info.get("forwardPE")),
+                ("PEG Ratio", info.get("pegRatio")),
+                ("Price to Book", info.get("priceToBook")),
+                ("Price to Sales", info.get("priceToSalesTrailing12Months")),
+                ("Profit Margin", info.get("profitMargins")),
+                ("Operating Margin", info.get("operatingMargins")),
+                ("ROE", info.get("returnOnEquity")),
+                ("ROA", info.get("returnOnAssets")),
+                ("Revenue Growth", info.get("revenueGrowth")),
+                ("Earnings Growth", info.get("earningsGrowth")),
+                ("Debt to Equity", info.get("debtToEquity")),
+                ("Current Ratio", info.get("currentRatio")),
+                ("Quick Ratio", info.get("quickRatio")),
+                ("Dividend Yield", info.get("dividendYield")),
+                ("Payout Ratio", info.get("payoutRatio")),
+            ]
+            for name, value in key_stats:
+                if value is not None:
+                    results.append(f"{name}: {value}")
+            results.append("")
+        except Exception as e:
+            results.append(f"Key statistics unavailable: {e}\n")
+
+        # Balance sheet summary (most recent 2 periods)
+        try:
+            balance = ticker_obj.balance_sheet
+            if balance is not None and not balance.empty:
+                results.append("=== Balance Sheet Summary (Last 2 Periods) ===")
+                results.append(balance.iloc[:, :2].to_string())
+                results.append("")
+        except Exception as e:
+            results.append(f"Balance sheet unavailable: {e}\n")
+
+        # Income statement summary (most recent 2 periods)
+        try:
+            income = ticker_obj.income_stmt
+            if income is not None and not income.empty:
+                results.append("=== Income Statement Summary (Last 2 Periods) ===")
+                results.append(income.iloc[:, :2].to_string())
+                results.append("")
+        except Exception as e:
+            results.append(f"Income statement unavailable: {e}\n")
+
+        # Cash flow summary (most recent 2 periods)
+        try:
+            cashflow = ticker_obj.cashflow
+            if cashflow is not None and not cashflow.empty:
+                results.append("=== Cash Flow Summary (Last 2 Periods) ===")
+                results.append(cashflow.iloc[:, :2].to_string())
+                results.append("")
+        except Exception as e:
+            results.append(f"Cash flow unavailable: {e}\n")
+
+        return "\n".join(results) if results else f"No fundamental data available for {ticker}"
+
+    except Exception as e:
+        return f"Error retrieving fundamentals for {ticker}: {str(e)}"

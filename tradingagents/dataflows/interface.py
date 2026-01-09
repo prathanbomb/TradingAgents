@@ -1,38 +1,59 @@
-from typing import Annotated
+"""Data interface module with vendor routing.
 
-# Import from vendor-specific modules
-from .local import get_YFin_data, get_finnhub_news, get_finnhub_company_insider_sentiment, get_finnhub_company_insider_transactions, get_simfin_balance_sheet, get_simfin_cashflow, get_simfin_income_statements, get_reddit_global_news, get_reddit_company_news
-from .y_finance import get_YFin_data_online, get_stock_stats_indicators_window, get_balance_sheet as get_yfinance_balance_sheet, get_cashflow as get_yfinance_cashflow, get_income_statement as get_yfinance_income_statement, get_insider_transactions as get_yfinance_insider_transactions
-from .google import get_google_news
-from .openai import get_stock_news_openai, get_global_news_openai, get_fundamentals_openai
-from .alpha_vantage import (
-    get_stock as get_alpha_vantage_stock,
-    get_indicator as get_alpha_vantage_indicator,
-    get_fundamentals as get_alpha_vantage_fundamentals,
-    get_balance_sheet as get_alpha_vantage_balance_sheet,
-    get_cashflow as get_alpha_vantage_cashflow,
-    get_income_statement as get_alpha_vantage_income_statement,
-    get_insider_transactions as get_alpha_vantage_insider_transactions,
-    get_news as get_alpha_vantage_news
-)
+This module provides a unified interface for data retrieval,
+routing requests to the appropriate vendor based on configuration.
+"""
+
+import logging
+import time
+from typing import List, Dict, Any, Tuple
+
+from .vendors import VendorRegistry, VendorNotFoundError, MethodNotSupportedError
+from .config import get_config
 from .alpha_vantage_common import AlphaVantageRateLimitError
 
-# Configuration and routing logic
-from .config import get_config
+logger = logging.getLogger(__name__)
+
+# TTL cache for vendor requests (5 minute TTL, max 100 entries)
+_request_cache: Dict[Tuple, Tuple[Any, float]] = {}
+_CACHE_TTL = 300  # seconds
+_CACHE_MAX_SIZE = 100
+
+
+def _get_cache_key(method: str, args: tuple, kwargs: dict) -> Tuple:
+    """Create a hashable cache key from method call parameters."""
+    return (method, args, tuple(sorted(kwargs.items())))
+
+
+def _cache_get(key: Tuple) -> Tuple[bool, Any]:
+    """Get value from cache if exists and not expired."""
+    if key in _request_cache:
+        value, timestamp = _request_cache[key]
+        if time.time() - timestamp < _CACHE_TTL:
+            logger.debug(f"Cache hit for {key[0]}")
+            return True, value
+        else:
+            del _request_cache[key]
+    return False, None
+
+
+def _cache_set(key: Tuple, value: Any) -> None:
+    """Set value in cache with current timestamp."""
+    # Evict oldest entries if cache is full
+    if len(_request_cache) >= _CACHE_MAX_SIZE:
+        oldest_key = min(_request_cache.keys(), key=lambda k: _request_cache[k][1])
+        del _request_cache[oldest_key]
+    _request_cache[key] = (value, time.time())
 
 # Tools organized by category
 TOOLS_CATEGORIES = {
     "core_stock_apis": {
         "description": "OHLCV stock price data",
-        "tools": [
-            "get_stock_data"
-        ]
+        "tools": ["get_stock_data"],
     },
     "technical_indicators": {
         "description": "Technical analysis indicators",
-        "tools": [
-            "get_indicators"
-        ]
+        "tools": ["get_indicators"],
     },
     "fundamental_data": {
         "description": "Company fundamentals",
@@ -40,8 +61,8 @@ TOOLS_CATEGORIES = {
             "get_fundamentals",
             "get_balance_sheet",
             "get_cashflow",
-            "get_income_statement"
-        ]
+            "get_income_statement",
+        ],
     },
     "news_data": {
         "description": "News (public/insiders, original/processed)",
@@ -50,71 +71,10 @@ TOOLS_CATEGORIES = {
             "get_global_news",
             "get_insider_sentiment",
             "get_insider_transactions",
-        ]
-    }
-}
-
-VENDOR_LIST = [
-    "local",
-    "yfinance",
-    "openai",
-    "google"
-]
-
-# Mapping of methods to their vendor-specific implementations
-VENDOR_METHODS = {
-    # core_stock_apis
-    "get_stock_data": {
-        "alpha_vantage": get_alpha_vantage_stock,
-        "yfinance": get_YFin_data_online,
-        "local": get_YFin_data,
-    },
-    # technical_indicators
-    "get_indicators": {
-        "alpha_vantage": get_alpha_vantage_indicator,
-        "yfinance": get_stock_stats_indicators_window,
-        "local": get_stock_stats_indicators_window
-    },
-    # fundamental_data
-    "get_fundamentals": {
-        "alpha_vantage": get_alpha_vantage_fundamentals,
-        "openai": get_fundamentals_openai,
-    },
-    "get_balance_sheet": {
-        "alpha_vantage": get_alpha_vantage_balance_sheet,
-        "yfinance": get_yfinance_balance_sheet,
-        "local": get_simfin_balance_sheet,
-    },
-    "get_cashflow": {
-        "alpha_vantage": get_alpha_vantage_cashflow,
-        "yfinance": get_yfinance_cashflow,
-        "local": get_simfin_cashflow,
-    },
-    "get_income_statement": {
-        "alpha_vantage": get_alpha_vantage_income_statement,
-        "yfinance": get_yfinance_income_statement,
-        "local": get_simfin_income_statements,
-    },
-    # news_data
-    "get_news": {
-        "alpha_vantage": get_alpha_vantage_news,
-        "openai": get_stock_news_openai,
-        "google": get_google_news,
-        "local": [get_finnhub_news, get_reddit_company_news, get_google_news],
-    },
-    "get_global_news": {
-        "openai": get_global_news_openai,
-        "local": get_reddit_global_news
-    },
-    "get_insider_sentiment": {
-        "local": get_finnhub_company_insider_sentiment
-    },
-    "get_insider_transactions": {
-        "alpha_vantage": get_alpha_vantage_insider_transactions,
-        "yfinance": get_yfinance_insider_transactions,
-        "local": get_finnhub_company_insider_transactions,
+        ],
     },
 }
+
 
 def get_category_for_method(method: str) -> str:
     """Get the category that contains the specified method."""
@@ -123,8 +83,10 @@ def get_category_for_method(method: str) -> str:
             return category
     raise ValueError(f"Method '{method}' not found in any category")
 
+
 def get_vendor(category: str, method: str = None) -> str:
     """Get the configured vendor for a data category or specific tool method.
+
     Tool-level configuration takes precedence over category-level.
     """
     config = get_config()
@@ -136,109 +98,132 @@ def get_vendor(category: str, method: str = None) -> str:
             return tool_vendors[method]
 
     # Fall back to category-level configuration
-    return config.get("data_vendors", {}).get(category, "default")
+    return config.get("data_vendors", {}).get(category, "yfinance")
+
+
+def get_available_vendors_for_method(method: str) -> List[str]:
+    """Get list of vendors that support a specific method.
+
+    Args:
+        method: The method name (e.g., 'get_stock_data')
+
+    Returns:
+        List of vendor names that support the method
+    """
+    return VendorRegistry.get_vendors_for_method(method)
+
 
 def route_to_vendor(method: str, *args, **kwargs):
-    """Route method calls to appropriate vendor implementation with fallback support."""
+    """Route method calls to appropriate vendor implementation with fallback support.
+
+    Args:
+        method: The method name to call
+        *args: Positional arguments for the method
+        **kwargs: Keyword arguments for the method
+
+    Returns:
+        Result from the vendor method
+
+    Raises:
+        RuntimeError: If all vendor implementations fail
+    """
+    # Check cache first
+    cache_key = _get_cache_key(method, args, kwargs)
+    hit, cached_value = _cache_get(cache_key)
+    if hit:
+        return cached_value
+
     category = get_category_for_method(method)
     vendor_config = get_vendor(category, method)
 
     # Handle comma-separated vendors
-    primary_vendors = [v.strip() for v in vendor_config.split(',')]
-
-    if method not in VENDOR_METHODS:
-        raise ValueError(f"Method '{method}' not supported")
+    primary_vendors = [v.strip() for v in vendor_config.split(",")]
 
     # Get all available vendors for this method for fallback
-    all_available_vendors = list(VENDOR_METHODS[method].keys())
-    
-    # Create fallback vendor list: primary vendors first, then remaining vendors as fallbacks
+    all_available_vendors = get_available_vendors_for_method(method)
+
+    # Create fallback vendor list: primary vendors first, then remaining vendors
     fallback_vendors = primary_vendors.copy()
     for vendor in all_available_vendors:
         if vendor not in fallback_vendors:
             fallback_vendors.append(vendor)
 
-    # Debug: Print fallback ordering
-    primary_str = " → ".join(primary_vendors)
-    fallback_str = " → ".join(fallback_vendors)
-    print(f"DEBUG: {method} - Primary: [{primary_str}] | Full fallback order: [{fallback_str}]")
+    # Log fallback ordering
+    primary_str = " -> ".join(primary_vendors)
+    fallback_str = " -> ".join(fallback_vendors)
+    logger.debug(f"{method} - Primary: [{primary_str}] | Full fallback order: [{fallback_str}]")
 
     # Track results and execution state
     results = []
     vendor_attempt_count = 0
-    any_primary_vendor_attempted = False
     successful_vendor = None
 
-    for vendor in fallback_vendors:
-        if vendor not in VENDOR_METHODS[method]:
-            if vendor in primary_vendors:
-                print(f"INFO: Vendor '{vendor}' not supported for method '{method}', falling back to next vendor")
+    for vendor_name in fallback_vendors:
+        # Check if vendor supports this method
+        if vendor_name not in all_available_vendors:
+            if vendor_name in primary_vendors:
+                logger.info(
+                    f"Vendor '{vendor_name}' not supported for method '{method}', "
+                    "falling back to next vendor"
+                )
             continue
 
-        vendor_impl = VENDOR_METHODS[method][vendor]
-        is_primary_vendor = vendor in primary_vendors
         vendor_attempt_count += 1
+        is_primary_vendor = vendor_name in primary_vendors
 
-        # Track if we attempted any primary vendor
-        if is_primary_vendor:
-            any_primary_vendor_attempted = True
-
-        # Debug: Print current attempt
+        # Log current attempt
         vendor_type = "PRIMARY" if is_primary_vendor else "FALLBACK"
-        print(f"DEBUG: Attempting {vendor_type} vendor '{vendor}' for {method} (attempt #{vendor_attempt_count})")
+        logger.debug(
+            f"Attempting {vendor_type} vendor '{vendor_name}' for {method} "
+            f"(attempt #{vendor_attempt_count})"
+        )
 
-        # Handle list of methods for a vendor
-        if isinstance(vendor_impl, list):
-            vendor_methods = [(impl, vendor) for impl in vendor_impl]
-            print(f"DEBUG: Vendor '{vendor}' has multiple implementations: {len(vendor_methods)} functions")
-        else:
-            vendor_methods = [(vendor_impl, vendor)]
+        try:
+            result = VendorRegistry.route(method, vendor_name, *args, **kwargs)
+            results.append(result)
+            successful_vendor = vendor_name
+            logger.debug(f"Vendor '{vendor_name}' succeeded")
 
-        # Run methods for this vendor
-        vendor_results = []
-        for impl_func, vendor_name in vendor_methods:
-            try:
-                print(f"DEBUG: Calling {impl_func.__name__} from vendor '{vendor_name}'...")
-                result = impl_func(*args, **kwargs)
-                vendor_results.append(result)
-                print(f"SUCCESS: {impl_func.__name__} from vendor '{vendor_name}' completed successfully")
-                    
-            except AlphaVantageRateLimitError as e:
-                if vendor == "alpha_vantage":
-                    print(f"RATE_LIMIT: Alpha Vantage rate limit exceeded, falling back to next available vendor")
-                    print(f"DEBUG: Rate limit details: {e}")
-                # Continue to next vendor for fallback
-                continue
-            except Exception as e:
-                # Log error but continue with other implementations
-                print(f"FAILED: {impl_func.__name__} from vendor '{vendor_name}' failed: {e}")
-                continue
-
-        # Add this vendor's results
-        if vendor_results:
-            results.extend(vendor_results)
-            successful_vendor = vendor
-            result_summary = f"Got {len(vendor_results)} result(s)"
-            print(f"SUCCESS: Vendor '{vendor}' succeeded - {result_summary}")
-            
-            # Stopping logic: Stop after first successful vendor for single-vendor configs
-            # Multiple vendor configs (comma-separated) may want to collect from multiple sources
+            # Stop after first successful vendor for single-vendor configs
             if len(primary_vendors) == 1:
-                print(f"DEBUG: Stopping after successful vendor '{vendor}' (single-vendor config)")
+                logger.debug(f"Stopping after successful vendor '{vendor_name}'")
                 break
-        else:
-            print(f"FAILED: Vendor '{vendor}' produced no results")
+
+        except AlphaVantageRateLimitError as e:
+            logger.warning(
+                f"Alpha Vantage rate limit exceeded, falling back to next vendor"
+            )
+            logger.debug(f"Rate limit details: {e}")
+            continue
+
+        except MethodNotSupportedError as e:
+            logger.debug(f"Vendor '{vendor_name}' does not support '{method}': {e}")
+            continue
+
+        except VendorNotFoundError as e:
+            logger.warning(f"Vendor '{vendor_name}' not found: {e}")
+            continue
+
+        except Exception as e:
+            logger.warning(f"Vendor '{vendor_name}' failed for {method}: {e}")
+            continue
 
     # Final result summary
     if not results:
-        print(f"FAILURE: All {vendor_attempt_count} vendor attempts failed for method '{method}'")
+        logger.error(f"All {vendor_attempt_count} vendor attempts failed for method '{method}'")
         raise RuntimeError(f"All vendor implementations failed for method '{method}'")
-    else:
-        print(f"FINAL: Method '{method}' completed with {len(results)} result(s) from {vendor_attempt_count} vendor attempt(s)")
+
+    logger.debug(
+        f"Method '{method}' completed with {len(results)} result(s) "
+        f"from {vendor_attempt_count} vendor attempt(s)"
+    )
 
     # Return single result if only one, otherwise concatenate as string
     if len(results) == 1:
-        return results[0]
+        result = results[0]
     else:
-        # Convert all results to strings and concatenate
-        return '\n'.join(str(result) for result in results)
+        result = "\n".join(str(r) for r in results)
+
+    # Cache the result
+    _cache_set(cache_key, result)
+    return result

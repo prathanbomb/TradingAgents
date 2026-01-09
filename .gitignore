@@ -1,11 +1,46 @@
-.venv
-results
-env/
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE and tooling
+.idea/
+.vscode/
+*.iml
+.claude/
+
+# OS files
 .DS_Store
-*.csv
-src/
+Thumbs.db
+
+# Environment
+.env
+
+# Output directories (generated at runtime)
+data/
+reports/
+results/
 eval_results/
 eval_data/
-*.egg-info/
-.env
+
+# Misc
+*.csv
+src/

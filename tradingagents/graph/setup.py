@@ -5,10 +5,27 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph, START
 from langgraph.prebuilt import ToolNode
 
-from tradingagents.agents import *
+from tradingagents.agents import create_msg_delete
+from tradingagents.agents.base import (
+    create_analyst_from_config,
+    get_analyst_config,
+    create_researcher_from_config,
+    BULL_RESEARCHER_CONFIG,
+    BEAR_RESEARCHER_CONFIG,
+    create_debater_from_config,
+    RISKY_DEBATER_CONFIG,
+    SAFE_DEBATER_CONFIG,
+    NEUTRAL_DEBATER_CONFIG,
+    create_manager_from_config,
+    RESEARCH_MANAGER_CONFIG,
+    RISK_MANAGER_CONFIG,
+    create_trader_from_config,
+    TRADER_CONFIG,
+)
 from tradingagents.agents.utils.agent_states import AgentState
 
 from .conditional_logic import ConditionalLogic
+from .propagation import analyst_collector_node
 
 
 class GraphSetup:
@@ -57,52 +74,43 @@ class GraphSetup:
         delete_nodes = {}
         tool_nodes = {}
 
-        if "market" in selected_analysts:
-            analyst_nodes["market"] = create_market_analyst(
-                self.quick_thinking_llm
+        # Create analyst nodes using base class factory
+        for analyst_type in selected_analysts:
+            config = get_analyst_config(analyst_type)
+            analyst_nodes[analyst_type] = create_analyst_from_config(
+                self.quick_thinking_llm, config
             )
-            delete_nodes["market"] = create_msg_delete()
-            tool_nodes["market"] = self.tool_nodes["market"]
+            delete_nodes[analyst_type] = create_msg_delete()
+            tool_nodes[analyst_type] = self.tool_nodes[analyst_type]
 
-        if "social" in selected_analysts:
-            analyst_nodes["social"] = create_social_media_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["social"] = create_msg_delete()
-            tool_nodes["social"] = self.tool_nodes["social"]
-
-        if "news" in selected_analysts:
-            analyst_nodes["news"] = create_news_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["news"] = create_msg_delete()
-            tool_nodes["news"] = self.tool_nodes["news"]
-
-        if "fundamentals" in selected_analysts:
-            analyst_nodes["fundamentals"] = create_fundamentals_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["fundamentals"] = create_msg_delete()
-            tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
-
-        # Create researcher and manager nodes
-        bull_researcher_node = create_bull_researcher(
-            self.quick_thinking_llm, self.bull_memory
+        # Create researcher nodes using base class factory
+        bull_researcher_node = create_researcher_from_config(
+            self.quick_thinking_llm, self.bull_memory, BULL_RESEARCHER_CONFIG
         )
-        bear_researcher_node = create_bear_researcher(
-            self.quick_thinking_llm, self.bear_memory
+        bear_researcher_node = create_researcher_from_config(
+            self.quick_thinking_llm, self.bear_memory, BEAR_RESEARCHER_CONFIG
         )
-        research_manager_node = create_research_manager(
-            self.deep_thinking_llm, self.invest_judge_memory
-        )
-        trader_node = create_trader(self.quick_thinking_llm, self.trader_memory)
 
-        # Create risk analysis nodes
-        risky_analyst = create_risky_debator(self.quick_thinking_llm)
-        neutral_analyst = create_neutral_debator(self.quick_thinking_llm)
-        safe_analyst = create_safe_debator(self.quick_thinking_llm)
-        risk_manager_node = create_risk_manager(
-            self.deep_thinking_llm, self.risk_manager_memory
+        # Create manager and trader nodes using base class factory
+        research_manager_node = create_manager_from_config(
+            self.deep_thinking_llm, self.invest_judge_memory, RESEARCH_MANAGER_CONFIG
+        )
+        trader_node = create_trader_from_config(
+            self.quick_thinking_llm, self.trader_memory, TRADER_CONFIG
+        )
+
+        # Create risk debater nodes using base class factory
+        risky_analyst = create_debater_from_config(
+            self.quick_thinking_llm, RISKY_DEBATER_CONFIG
+        )
+        safe_analyst = create_debater_from_config(
+            self.quick_thinking_llm, SAFE_DEBATER_CONFIG
+        )
+        neutral_analyst = create_debater_from_config(
+            self.quick_thinking_llm, NEUTRAL_DEBATER_CONFIG
+        )
+        risk_manager_node = create_manager_from_config(
+            self.deep_thinking_llm, self.risk_manager_memory, RISK_MANAGER_CONFIG
         )
 
         # Create workflow
@@ -126,18 +134,21 @@ class GraphSetup:
         workflow.add_node("Safe Analyst", safe_analyst)
         workflow.add_node("Risk Judge", risk_manager_node)
 
-        # Define edges
-        # Start with the first analyst
-        first_analyst = selected_analysts[0]
-        workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
+        # Add collector node for parallel analyst execution
+        workflow.add_node("Analyst Collector", analyst_collector_node)
 
-        # Connect analysts in sequence
-        for i, analyst_type in enumerate(selected_analysts):
+        # Define edges - Parallel analyst execution
+        # Fan-out: START -> all analysts simultaneously
+        for analyst_type in selected_analysts:
+            workflow.add_edge(START, f"{analyst_type.capitalize()} Analyst")
+
+        # Set up each analyst's tool loop and fan-in to collector
+        for analyst_type in selected_analysts:
             current_analyst = f"{analyst_type.capitalize()} Analyst"
             current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
 
-            # Add conditional edges for current analyst
+            # Add conditional edges for current analyst's tool loop
             workflow.add_conditional_edges(
                 current_analyst,
                 getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
@@ -145,12 +156,11 @@ class GraphSetup:
             )
             workflow.add_edge(current_tools, current_analyst)
 
-            # Connect to next analyst or to Bull Researcher if this is the last analyst
-            if i < len(selected_analysts) - 1:
-                next_analyst = f"{selected_analysts[i+1].capitalize()} Analyst"
-                workflow.add_edge(current_clear, next_analyst)
-            else:
-                workflow.add_edge(current_clear, "Bull Researcher")
+            # Fan-in: all analysts -> Collector
+            workflow.add_edge(current_clear, "Analyst Collector")
+
+        # Collector proceeds to debate phase
+        workflow.add_edge("Analyst Collector", "Bull Researcher")
 
         # Add remaining edges
         workflow.add_conditional_edges(

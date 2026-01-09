@@ -43,7 +43,7 @@
 
 <div align="center">
 
-🚀 [TradingAgents](#tradingagents-framework) | ⚡ [Installation & CLI](#installation-and-cli) | 🎬 [Demo](https://www.youtube.com/watch?v=90gr5lwjIho) | 📦 [Package Usage](#tradingagents-package) | 🤝 [Contributing](#contributing) | 📄 [Citation](#citation)
+🚀 [TradingAgents](#tradingagents-framework) | ⚡ [Installation](#installation) | 📅 [Scheduled Analysis](#scheduled-analysis) | 📦 [Package Usage](#tradingagents-package) | 🤝 [Contributing](#contributing) | 📄 [Citation](#citation)
 
 </div>
 
@@ -91,9 +91,7 @@ Our framework decomposes complex trading tasks into specialized roles. This ensu
   <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
 
-## Installation and CLI
-
-### Installation
+## Installation
 
 Clone TradingAgents:
 ```bash
@@ -101,55 +99,71 @@ git clone https://github.com/TauricResearch/TradingAgents.git
 cd TradingAgents
 ```
 
-Create a virtual environment in any of your favorite environment managers:
+Create a virtual environment:
 ```bash
-conda create -n tradingagents python=3.13
+conda create -n tradingagents python=3.12
 conda activate tradingagents
 ```
 
-Install dependencies:
+Install the package:
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
-### Required APIs
+### Configuration
 
-You will need the OpenAI API for all the agents, and [Alpha Vantage API](https://www.alphavantage.co/support/#api-key) for fundamental and news data (default configuration).
-
-```bash
-export OPENAI_API_KEY=$YOUR_OPENAI_API_KEY
-export ALPHA_VANTAGE_API_KEY=$YOUR_ALPHA_VANTAGE_API_KEY
-```
-
-Alternatively, you can create a `.env` file in the project root with your API keys (see `.env.example` for reference):
+Copy the example environment file and configure your API keys:
 ```bash
 cp .env.example .env
-# Edit .env with your actual API keys
 ```
 
-**Note:** We are happy to partner with Alpha Vantage to provide robust API support for TradingAgents. You can get a free AlphaVantage API [here](https://www.alphavantage.co/support/#api-key), TradingAgents-sourced requests also have increased rate limits to 60 requests per minute with no daily limits. Typically the quota is sufficient for performing complex tasks with TradingAgents thanks to Alpha Vantage’s open-source support program. If you prefer to use OpenAI for these data sources instead, you can modify the data vendor settings in `tradingagents/default_config.py`.
+Required API keys:
+- **LLM_API_KEY** - Your LLM provider API key (OpenAI, Anthropic, etc.)
+- **ALPHA_VANTAGE_API_KEY** - For market data and news ([get free key](https://www.alphavantage.co/support/#api-key))
+- **GOOGLE_API_KEY** - For Google Search and embeddings ([get key](https://aistudio.google.com/))
 
-### CLI Usage
+Optional cloud storage (Cloudflare R2):
+- **R2_ACCOUNT_ID**, **R2_ACCESS_KEY_ID**, **R2_SECRET_ACCESS_KEY** - R2 credentials
+- **R2_BUCKET_NAME** - Bucket for storing reports
+- **R2_PUBLIC_URL** - Public URL for permanent report access
 
-You can also try out the CLI directly by running:
+See `.env.example` for all available configuration options.
+
+## Scheduled Analysis
+
+The system runs automated analysis via GitHub Actions on **weekdays at 9:30 AM ET**.
+
+### Configure Tickers
+
+Edit `tickers.txt` to specify which stocks to analyze:
+```
+AAPL
+NVDA
+TSLA
+GOOGL
+```
+
+### GitHub Actions Setup
+
+1. Add your API keys as GitHub Secrets (Settings > Secrets > Actions)
+2. Push to GitHub - the workflow runs automatically on schedule
+3. Manually trigger via Actions tab > "Run workflow"
+
+Reports are uploaded to Cloudflare R2 with public URLs for easy access.
+
+### External Trigger
+
+Trigger analysis from any external system via HTTP:
+
 ```bash
-python -m cli.main
+curl -X POST \
+  -H "Authorization: token YOUR_GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github.v3+json" \
+  https://api.github.com/repos/OWNER/REPO/dispatches \
+  -d '{"event_type": "run-analysis", "client_payload": {"tickers": "AAPL,NVDA"}}'
 ```
-You will see a screen where you can select your desired tickers, date, LLMs, research depth, etc.
 
-<p align="center">
-  <img src="assets/cli/cli_init.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-An interface will appear showing results as they load, letting you track the agent's progress as it runs.
-
-<p align="center">
-  <img src="assets/cli/cli_news.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-<p align="center">
-  <img src="assets/cli/cli_transaction.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
+The `tickers` parameter is optional - if omitted, `tickers.txt` is used.
 
 ## TradingAgents Package
 
@@ -159,7 +173,7 @@ We built TradingAgents with LangGraph to ensure flexibility and modularity. We u
 
 ### Python Usage
 
-To use TradingAgents inside your code, you can import the `tradingagents` module and initialize a `TradingAgentsGraph()` object. The `.propagate()` function will return a decision. You can run `main.py`, here's also a quick example:
+To use TradingAgents inside your code, you can import the `tradingagents` module and initialize a `TradingAgentsGraph()` object. The `.propagate()` function will return a decision:
 
 ```python
 from tradingagents.graph.trading_graph import TradingAgentsGraph

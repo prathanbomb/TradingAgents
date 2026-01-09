@@ -1,0 +1,9 @@
+# Trading Agents - Tickers for Scheduled Analysis
+# Add one ticker symbol per line
+# Lines starting with # are ignored
+
+AAPL
+NVDA
+TSLA
+GOOGL
+MSFT

@@ -1,33 +1,49 @@
-import os
+"""Default configuration for TradingAgents.
 
-DEFAULT_CONFIG = {
-    "project_dir": os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
-    "results_dir": os.getenv("TRADINGAGENTS_RESULTS_DIR", "./results"),
-    "data_dir": "/Users/yluo/Documents/Code/ScAI/FR1-data",
-    "data_cache_dir": os.path.join(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
-        "dataflows/data_cache",
-    ),
-    # LLM settings
-    "llm_provider": "openai",
-    "deep_think_llm": "o4-mini",
-    "quick_think_llm": "gpt-4o-mini",
-    "backend_url": "https://api.openai.com/v1",
-    # Debate and discussion settings
-    "max_debate_rounds": 1,
-    "max_risk_discuss_rounds": 1,
-    "max_recur_limit": 100,
-    # Data vendor configuration
-    # Category-level configuration (default for all tools in category)
-    "data_vendors": {
-        "core_stock_apis": "yfinance",       # Options: yfinance, alpha_vantage, local
-        "technical_indicators": "yfinance",  # Options: yfinance, alpha_vantage, local
-        "fundamental_data": "alpha_vantage", # Options: openai, alpha_vantage, local
-        "news_data": "alpha_vantage",        # Options: openai, alpha_vantage, google, local
-    },
-    # Tool-level configuration (takes precedence over category-level)
-    "tool_vendors": {
-        # Example: "get_stock_data": "alpha_vantage",  # Override category default
-        # Example: "get_news": "openai",               # Override category default
-    },
-}
+This module provides backward-compatible access to configuration.
+New code should use TradingAgentsConfig from tradingagents.config.
+"""
+
+import warnings
+from typing import Dict, Any
+
+from .config import TradingAgentsConfig
+
+
+def _create_default_config() -> TradingAgentsConfig:
+    """Create the default configuration."""
+    return TradingAgentsConfig()
+
+
+# New-style configuration (recommended)
+DEFAULT_TRADING_CONFIG = _create_default_config()
+
+# Legacy dictionary format (deprecated)
+# This is kept for backward compatibility with existing code
+DEFAULT_CONFIG: Dict[str, Any] = DEFAULT_TRADING_CONFIG.to_legacy_dict()
+
+
+def get_config() -> TradingAgentsConfig:
+    """Get the default configuration.
+
+    Returns:
+        TradingAgentsConfig instance
+    """
+    return TradingAgentsConfig()
+
+
+def get_legacy_config() -> Dict[str, Any]:
+    """Get the default configuration in legacy dictionary format.
+
+    .. deprecated::
+        Use get_config() instead.
+
+    Returns:
+        Configuration dictionary
+    """
+    warnings.warn(
+        "get_legacy_config() is deprecated. Use get_config() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return TradingAgentsConfig().to_legacy_dict()

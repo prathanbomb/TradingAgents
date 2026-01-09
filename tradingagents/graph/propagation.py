@@ -47,3 +47,13 @@ class Propagator:
             "stream_mode": "values",
             "config": {"recursion_limit": self.max_recur_limit},
         }
+
+
+def analyst_collector_node(state: AgentState) -> Dict[str, Any]:
+    """Collector node that waits for all analysts to complete.
+
+    This node acts as a join point for parallel analyst execution.
+    It simply passes through - the actual synchronization happens
+    because LangGraph waits for all incoming edges before executing.
+    """
+    return {}

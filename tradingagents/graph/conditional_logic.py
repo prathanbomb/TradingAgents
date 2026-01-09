@@ -11,37 +11,23 @@ class ConditionalLogic:
         self.max_debate_rounds = max_debate_rounds
         self.max_risk_discuss_rounds = max_risk_discuss_rounds
 
-    def should_continue_market(self, state: AgentState):
-        """Determine if market analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            return "tools_market"
-        return "Msg Clear Market"
+        # Generate analyst router methods dynamically
+        for analyst_type in ["market", "social", "news", "fundamentals"]:
+            setattr(self, f"should_continue_{analyst_type}",
+                    self._create_analyst_router(analyst_type))
 
-    def should_continue_social(self, state: AgentState):
-        """Determine if social media analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            return "tools_social"
-        return "Msg Clear Social"
+    def _create_analyst_router(self, analyst_type: str):
+        """Create a router function for the given analyst type."""
+        tools_key = f"tools_{analyst_type}"
+        clear_key = f"Msg Clear {analyst_type.capitalize()}"
 
-    def should_continue_news(self, state: AgentState):
-        """Determine if news analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            return "tools_news"
-        return "Msg Clear News"
+        def router(state: AgentState):
+            if state["messages"][-1].tool_calls:
+                return tools_key
+            return clear_key
 
-    def should_continue_fundamentals(self, state: AgentState):
-        """Determine if fundamentals analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            return "tools_fundamentals"
-        return "Msg Clear Fundamentals"
+        router.__doc__ = f"Determine if {analyst_type} analysis should continue."
+        return router
 
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""

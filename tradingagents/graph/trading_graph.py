@@ -1,18 +1,22 @@
 # TradingAgents/graph/trading_graph.py
 
+import logging
 import os
 from pathlib import Path
 import json
 from datetime import date
-from typing import Dict, Any, Tuple, List, Optional
+from typing import Dict, Any, Tuple, List, Optional, Union
 
 from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger(__name__)
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import *
+from tradingagents.config import TradingAgentsConfig
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.memory import FinancialSituationMemory
 from tradingagents.agents.utils.agent_states import (
@@ -50,17 +54,28 @@ class TradingAgentsGraph:
         self,
         selected_analysts=["market", "social", "news", "fundamentals"],
         debug=False,
-        config: Dict[str, Any] = None,
+        config: Union[TradingAgentsConfig, Dict[str, Any], None] = None,
     ):
         """Initialize the trading agents graph and components.
 
         Args:
             selected_analysts: List of analyst types to include
             debug: Whether to run in debug mode
-            config: Configuration dictionary. If None, uses default config
+            config: Configuration (TradingAgentsConfig or legacy dict). If None, uses default.
         """
         self.debug = debug
-        self.config = config or DEFAULT_CONFIG
+
+        # Handle both new and legacy config formats
+        if config is None:
+            self._config = TradingAgentsConfig()
+        elif isinstance(config, TradingAgentsConfig):
+            self._config = config
+        else:
+            # Legacy dictionary format
+            self._config = TradingAgentsConfig.from_legacy_dict(config)
+
+        # Legacy dict for backward compatibility with existing code
+        self.config = self._config.to_legacy_dict()
 
         # Update the interface's config
         set_config(self.config)
@@ -72,19 +87,46 @@ class TradingAgentsGraph:
         )
 
         # Initialize LLMs
-        if self.config["llm_provider"].lower() == "openai" or self.config["llm_provider"] == "ollama" or self.config["llm_provider"] == "openrouter":
-            self.deep_thinking_llm = ChatOpenAI(model=self.config["deep_think_llm"], base_url=self.config["backend_url"])
-            self.quick_thinking_llm = ChatOpenAI(model=self.config["quick_think_llm"], base_url=self.config["backend_url"])
-        elif self.config["llm_provider"].lower() == "anthropic":
+        provider = self.config["llm_provider"].lower()
+        logger.info(f"Initializing LLM provider: {provider}")
+
+        if provider in ["openai", "ollama", "openrouter", "openai-compatible"]:
+            # Get API key from configured env var (defaults to OPENAI_API_KEY)
+            api_key_env = self.config.get("api_key_env_var", "OPENAI_API_KEY")
+
+            # Check if it's a direct key (from CLI) or env var name
+            if api_key_env.startswith("__DIRECT_KEY__:"):
+                api_key = api_key_env.replace("__DIRECT_KEY__:", "")
+            else:
+                api_key = os.environ.get(api_key_env)
+
+            if not api_key:
+                raise ValueError(
+                    f"API key not found. Please set the '{api_key_env}' environment variable "
+                    f"or provide the key directly when prompted."
+                )
+
+            self.deep_thinking_llm = ChatOpenAI(
+                model=self.config["deep_think_llm"],
+                base_url=self.config["backend_url"],
+                api_key=api_key
+            )
+            self.quick_thinking_llm = ChatOpenAI(
+                model=self.config["quick_think_llm"],
+                base_url=self.config["backend_url"],
+                api_key=api_key
+            )
+        elif provider == "anthropic":
             self.deep_thinking_llm = ChatAnthropic(model=self.config["deep_think_llm"], base_url=self.config["backend_url"])
             self.quick_thinking_llm = ChatAnthropic(model=self.config["quick_think_llm"], base_url=self.config["backend_url"])
-        elif self.config["llm_provider"].lower() == "google":
+        elif provider == "google":
             self.deep_thinking_llm = ChatGoogleGenerativeAI(model=self.config["deep_think_llm"])
             self.quick_thinking_llm = ChatGoogleGenerativeAI(model=self.config["quick_think_llm"])
         else:
             raise ValueError(f"Unsupported LLM provider: {self.config['llm_provider']}")
         
         # Initialize memories
+        logger.debug("Initializing memory systems")
         self.bull_memory = FinancialSituationMemory("bull_memory", self.config)
         self.bear_memory = FinancialSituationMemory("bear_memory", self.config)
         self.trader_memory = FinancialSituationMemory("trader_memory", self.config)
@@ -119,6 +161,7 @@ class TradingAgentsGraph:
 
         # Set up the graph
         self.graph = self.graph_setup.setup_graph(selected_analysts)
+        logger.info(f"Graph initialized with analysts: {selected_analysts}")
 
     def _create_tool_nodes(self) -> Dict[str, ToolNode]:
         """Create tool nodes for different data sources using abstract methods."""
@@ -159,6 +202,7 @@ class TradingAgentsGraph:
 
     def propagate(self, company_name, trade_date):
         """Run the trading agents graph for a company on a specific date."""
+        logger.info(f"Starting analysis for {company_name} on {trade_date}")
 
         self.ticker = company_name
 
@@ -189,8 +233,11 @@ class TradingAgentsGraph:
         # Log state
         self._log_state(trade_date, final_state)
 
-        # Return decision and processed signal
-        return final_state, self.process_signal(final_state["final_trade_decision"])
+        # Process and return decision
+        decision = self.process_signal(final_state["final_trade_decision"])
+        logger.info(f"Analysis completed for {company_name}: {decision}")
+
+        return final_state, decision
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""

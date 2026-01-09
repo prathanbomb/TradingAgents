@@ -1,40 +1,72 @@
+"""Trading agents module - all agents are now config-driven via base classes."""
+
 from .utils.agent_utils import create_msg_delete
 from .utils.agent_states import AgentState, InvestDebateState, RiskDebateState
 from .utils.memory import FinancialSituationMemory
 
-from .analysts.fundamentals_analyst import create_fundamentals_analyst
-from .analysts.market_analyst import create_market_analyst
-from .analysts.news_analyst import create_news_analyst
-from .analysts.social_media_analyst import create_social_media_analyst
-
-from .researchers.bear_researcher import create_bear_researcher
-from .researchers.bull_researcher import create_bull_researcher
-
-from .risk_mgmt.aggresive_debator import create_risky_debator
-from .risk_mgmt.conservative_debator import create_safe_debator
-from .risk_mgmt.neutral_debator import create_neutral_debator
-
-from .managers.research_manager import create_research_manager
-from .managers.risk_manager import create_risk_manager
-
-from .trader.trader import create_trader
+# All agent factories and configs from base module
+from .base import (
+    # Analyst
+    create_analyst_from_config,
+    get_analyst_config,
+    MARKET_ANALYST_CONFIG,
+    FUNDAMENTALS_ANALYST_CONFIG,
+    NEWS_ANALYST_CONFIG,
+    SOCIAL_ANALYST_CONFIG,
+    # Researcher
+    create_researcher_from_config,
+    get_researcher_config,
+    BULL_RESEARCHER_CONFIG,
+    BEAR_RESEARCHER_CONFIG,
+    # Debater
+    create_debater_from_config,
+    get_debater_config,
+    RISKY_DEBATER_CONFIG,
+    SAFE_DEBATER_CONFIG,
+    NEUTRAL_DEBATER_CONFIG,
+    # Manager
+    create_manager_from_config,
+    get_manager_config,
+    RESEARCH_MANAGER_CONFIG,
+    RISK_MANAGER_CONFIG,
+    # Trader
+    create_trader_from_config,
+    get_trader_config,
+    TRADER_CONFIG,
+)
 
 __all__ = [
+    # Utils
     "FinancialSituationMemory",
     "AgentState",
-    "create_msg_delete",
     "InvestDebateState",
     "RiskDebateState",
-    "create_bear_researcher",
-    "create_bull_researcher",
-    "create_research_manager",
-    "create_fundamentals_analyst",
-    "create_market_analyst",
-    "create_neutral_debator",
-    "create_news_analyst",
-    "create_risky_debator",
-    "create_risk_manager",
-    "create_safe_debator",
-    "create_social_media_analyst",
-    "create_trader",
+    "create_msg_delete",
+    # Analyst
+    "create_analyst_from_config",
+    "get_analyst_config",
+    "MARKET_ANALYST_CONFIG",
+    "FUNDAMENTALS_ANALYST_CONFIG",
+    "NEWS_ANALYST_CONFIG",
+    "SOCIAL_ANALYST_CONFIG",
+    # Researcher
+    "create_researcher_from_config",
+    "get_researcher_config",
+    "BULL_RESEARCHER_CONFIG",
+    "BEAR_RESEARCHER_CONFIG",
+    # Debater
+    "create_debater_from_config",
+    "get_debater_config",
+    "RISKY_DEBATER_CONFIG",
+    "SAFE_DEBATER_CONFIG",
+    "NEUTRAL_DEBATER_CONFIG",
+    # Manager
+    "create_manager_from_config",
+    "get_manager_config",
+    "RESEARCH_MANAGER_CONFIG",
+    "RISK_MANAGER_CONFIG",
+    # Trader
+    "create_trader_from_config",
+    "get_trader_config",
+    "TRADER_CONFIG",
 ]
