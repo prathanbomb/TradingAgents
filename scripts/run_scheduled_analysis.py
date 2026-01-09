@@ -5,11 +5,14 @@ Reads tickers from tickers.txt and runs analysis for each one.
 Reports are saved to R2 storage with public URLs.
 """
 
+import json
 import os
 import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
+
+import requests
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -124,6 +127,76 @@ def save_reports(ticker: str, trade_date: str, reports: dict) -> dict | None:
     }
 
 
+def send_discord_notification(
+    ticker: str, trade_date: str, decision: str, storage_result: dict | None
+) -> bool:
+    """Send Discord notification with analysis results and report links."""
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    if not webhook_url:
+        return False
+
+    # Determine decision emoji
+    decision_upper = decision.upper() if decision else "UNKNOWN"
+    if "BUY" in decision_upper:
+        decision_emoji = "📈"
+        color = 0x00FF00  # Green
+    elif "SELL" in decision_upper:
+        decision_emoji = "📉"
+        color = 0xFF0000  # Red
+    else:
+        decision_emoji = "⏸️"
+        color = 0xFFFF00  # Yellow
+
+    # Build report links
+    report_links = []
+    if storage_result and storage_result.get("reports"):
+        reports = storage_result["reports"]
+        # Prioritize final decision and investment plan
+        priority_reports = ["final_trade_decision", "investment_plan", "trader_investment_plan"]
+        for report_name in priority_reports:
+            if report_name in reports:
+                report = reports[report_name]
+                url = report.get("pdf_url") or report.get("url")
+                if url:
+                    display_name = report_name.replace("_", " ").title()
+                    report_links.append(f"• [{display_name}]({url})")
+
+    # Build embed
+    embed = {
+        "title": f"📊 Trading Analysis: {ticker}",
+        "color": color,
+        "fields": [
+            {"name": "📅 Date", "value": trade_date, "inline": True},
+            {"name": f"{decision_emoji} Decision", "value": decision or "N/A", "inline": True},
+        ],
+        "footer": {"text": "TradingAgents"},
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    if report_links:
+        embed["fields"].append({
+            "name": "📄 Reports",
+            "value": "\n".join(report_links),
+            "inline": False,
+        })
+
+    payload = {"embeds": [embed]}
+
+    try:
+        response = requests.post(
+            webhook_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        print("  Discord notification sent")
+        return True
+    except Exception as e:
+        print(f"  Discord notification failed: {e}")
+        return False
+
+
 def run_analysis(ticker: str, trade_date: str, config: dict) -> dict | None:
     """Run analysis for a single ticker."""
     print(f"\n{'='*60}")
@@ -156,6 +229,9 @@ def run_analysis(ticker: str, trade_date: str, config: dict) -> dict | None:
         # Save reports
         print("  Saving reports...")
         storage_result = save_reports(ticker, trade_date, reports)
+
+        # Send Discord notification
+        send_discord_notification(ticker, trade_date, decision, storage_result)
 
         print(f"  Decision: {decision}")
 

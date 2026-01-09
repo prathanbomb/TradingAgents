@@ -1,11 +1,7 @@
-name: Scheduled Trading Analysis
+name: Trading Analysis
 
 on:
-  schedule:
-    # 9:30 AM ET = 14:30 UTC (standard time) or 13:30 UTC (daylight saving)
-    # Using 13:30 UTC to account for DST (March-November)
-    - cron: '30 13 * * 1-5'  # Weekdays at 13:30 UTC (9:30 AM EDT)
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Manual trigger from GitHub UI
     inputs:
       tickers:
         description: 'Override tickers (comma-separated, leave empty to use tickers.txt)'
@@ -71,6 +67,9 @@ jobs:
 
           # Reports Output
           REPORTS_OUTPUT_DIR: ./reports
+
+          # Discord Notifications
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
           # Custom tickers (from workflow_dispatch or repository_dispatch)
           CUSTOM_TICKERS: ${{ github.event.inputs.tickers || github.event.client_payload.tickers || '' }}
