@@ -9,7 +9,7 @@ import json
 import os
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -178,7 +178,7 @@ def send_discord_notification(
             {"name": f"{decision_emoji} Decision", "value": decision or "N/A", "inline": True},
         ],
         "footer": {"text": "TradingAgents"},
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
     if report_links:
