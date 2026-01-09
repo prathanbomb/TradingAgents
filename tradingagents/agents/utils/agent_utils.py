@@ -1,4 +1,4 @@
-from langchain_core.messages import HumanMessage, RemoveMessage
+from langchain_core.messages import HumanMessage
 
 # Import tools from separate utility files
 from tradingagents.agents.utils.core_stock_tools import (
@@ -22,20 +22,13 @@ from tradingagents.agents.utils.news_data_tools import (
 
 def create_msg_delete():
     def delete_messages(state):
-        """Clear messages and add placeholder for Anthropic compatibility"""
-        messages = state["messages"]
+        """Add placeholder for Anthropic compatibility.
 
-        # Remove only messages that have valid IDs
-        removal_operations = [
-            RemoveMessage(id=m.id)
-            for m in messages
-            if hasattr(m, "id") and m.id is not None
-        ]
-
-        # Add a minimal placeholder message
+        Note: We don't try to remove messages as it can fail when
+        message IDs aren't in LangGraph's checkpoint state.
+        """
         placeholder = HumanMessage(content="Continue")
-
-        return {"messages": removal_operations + [placeholder]}
+        return {"messages": [placeholder]}
 
     return delete_messages
 
