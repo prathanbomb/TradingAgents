@@ -25,7 +25,14 @@ from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.config import StorageConfig
 from tradingagents.storage import StorageService
-from tradingagents.storage.pdf import convert_reports_to_pdf
+
+# PDF conversion is optional (requires system dependencies like pango, gobject)
+try:
+    from tradingagents.storage.pdf import convert_reports_to_pdf
+    PDF_AVAILABLE = True
+except (ImportError, OSError):
+    PDF_AVAILABLE = False
+    convert_reports_to_pdf = None
 
 
 def load_tickers(filepath: str = "tickers.txt") -> list[str]:
@@ -104,19 +111,20 @@ def save_reports(ticker: str, trade_date: str, reports: dict) -> dict | None:
             "url": storage.get_report_url(md_key),
         }
 
-    # Convert to PDF if local storage exists
-    local_dir = storage.get_local_path(prefix)
-    if local_dir:
-        local_path = Path(local_dir).parent / prefix
-        if local_path.exists():
-            pdf_paths = convert_reports_to_pdf(local_path)
-            for pdf_path in pdf_paths:
-                pdf_key = f"{prefix}/{pdf_path.name}"
-                pdf_result = storage.upload_file(pdf_path, pdf_key)
-                report_name = pdf_path.stem
-                if report_name in report_results:
-                    report_results[report_name]["pdf_paths"] = pdf_result
-                    report_results[report_name]["pdf_url"] = storage.get_report_url(pdf_key)
+    # Convert to PDF if available and local storage exists
+    if PDF_AVAILABLE:
+        local_dir = storage.get_local_path(prefix)
+        if local_dir:
+            local_path = Path(local_dir).parent / prefix
+            if local_path.exists():
+                pdf_paths = convert_reports_to_pdf(local_path)
+                for pdf_path in pdf_paths:
+                    pdf_key = f"{prefix}/{pdf_path.name}"
+                    pdf_result = storage.upload_file(pdf_path, pdf_key)
+                    report_name = pdf_path.stem
+                    if report_name in report_results:
+                        report_results[report_name]["pdf_paths"] = pdf_result
+                        report_results[report_name]["pdf_url"] = storage.get_report_url(pdf_key)
 
     return {
         "prefix": prefix,
