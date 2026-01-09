@@ -43,7 +43,7 @@
 
 <div align="center">
 
-🚀 [TradingAgents](#tradingagents-framework) | ⚡ [Installation](#installation) | 📅 [Scheduled Analysis](#scheduled-analysis) | 📦 [Package Usage](#tradingagents-package) | 🤝 [Contributing](#contributing) | 📄 [Citation](#citation)
+🚀 [TradingAgents](#tradingagents-framework) | ⚡ [Installation](#installation) | 🔄 [Running Analysis](#running-analysis) | 📦 [Package Usage](#tradingagents-package) | 🤝 [Contributing](#contributing) | 📄 [Citation](#citation)
 
 </div>
 
@@ -129,13 +129,13 @@ Optional cloud storage (Cloudflare R2):
 
 See `.env.example` for all available configuration options.
 
-## Scheduled Analysis
+## Running Analysis
 
-The system runs automated analysis via GitHub Actions on **weekdays at 9:30 AM ET**.
+Analysis can be triggered manually or via external systems using GitHub Actions.
 
 ### Configure Tickers
 
-Edit `tickers.txt` to specify which stocks to analyze:
+Edit `tickers.txt` to specify default stocks to analyze:
 ```
 AAPL
 NVDA
@@ -146,10 +146,9 @@ GOOGL
 ### GitHub Actions Setup
 
 1. Add your API keys as GitHub Secrets (Settings > Secrets > Actions)
-2. Push to GitHub - the workflow runs automatically on schedule
-3. Manually trigger via Actions tab > "Run workflow"
+2. Trigger manually via Actions tab > "Run workflow"
 
-Reports are uploaded to Cloudflare R2 with public URLs for easy access.
+Reports are uploaded to Cloudflare R2 with public URLs.
 
 ### External Trigger
 
@@ -164,6 +163,14 @@ curl -X POST \
 ```
 
 The `tickers` parameter is optional - if omitted, `tickers.txt` is used.
+
+### Discord Notifications
+
+Optionally receive notifications when analysis completes:
+
+1. Create a webhook in Discord (Server Settings > Integrations > Webhooks)
+2. Add `DISCORD_WEBHOOK_URL` to GitHub Secrets
+3. Notifications include decision (BUY/SELL/HOLD) and report links
 
 ## TradingAgents Package
 
