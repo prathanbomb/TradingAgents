@@ -26,6 +26,13 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.config import StorageConfig
 from tradingagents.storage import StorageService
 
+# Performance tracking (optional - will be available in full version)
+try:
+    from tradingagents.backtracking import PerformanceStorage
+    PERFORMANCE_AVAILABLE = True
+except ImportError:
+    PERFORMANCE_AVAILABLE = False
+
 # PDF conversion is optional (requires system dependencies like pango, gobject)
 try:
     from tradingagents.storage.pdf import convert_reports_to_pdf
@@ -247,6 +254,20 @@ def run_analysis(ticker: str, trade_date: str, config: dict) -> dict | None:
         print("  Saving reports...")
         storage_result = save_reports(ticker, trade_date, reports)
 
+        # Track prediction for performance analysis
+        if PERFORMANCE_AVAILABLE:
+            try:
+                perf_storage = PerformanceStorage()
+                perf_storage.record_prediction_from_state(
+                    ticker=ticker,
+                    trade_date=trade_date,
+                    final_state=final_state,
+                    decision=decision,
+                )
+                print("  Prediction recorded for performance tracking")
+            except Exception as e:
+                print(f"  Warning: Could not record prediction: {e}")
+
         # Send Discord notification
         send_discord_notification(ticker, trade_date, decision, storage_result)
 
@@ -264,8 +285,141 @@ def run_analysis(ticker: str, trade_date: str, config: dict) -> dict | None:
         return None
 
 
+def update_performance_outcomes(tickers: list[str], hold_days: int = 7) -> None:
+    """Update outcomes for past predictions that haven't been calculated yet.
+
+    This fetches current price data and calculates returns for predictions
+    that were made in the past.
+
+    Args:
+        tickers: List of ticker symbols to update
+        hold_days: Number of days to hold for return calculation
+    """
+    if not PERFORMANCE_AVAILABLE:
+        print("Performance tracking not available")
+        return
+
+    print("\n" + "=" * 60)
+    print("UPDATING PERFORMANCE OUTCOMES")
+    print("=" * 60)
+
+    perf_storage = PerformanceStorage()
+    total_updated = 0
+
+    for ticker in tickers:
+        print(f"\nUpdating outcomes for {ticker}...")
+        try:
+            updated = perf_storage.update_outcomes_for_ticker(
+                ticker=ticker,
+                hold_days=hold_days,
+                force_refresh=False,
+            )
+            print(f"  Updated {updated} predictions")
+            total_updated += updated
+        except Exception as e:
+            print(f"  Error updating {ticker}: {e}")
+
+    print(f"\nTotal predictions updated: {total_updated}")
+
+
+def generate_performance_report(ticker: str = None, days: int = 30) -> None:
+    """Generate and display a performance report.
+
+    Args:
+        ticker: Filter by specific ticker (None = all tickers)
+        days: Number of recent days to include in report
+    """
+    if not PERFORMANCE_AVAILABLE:
+        print("Performance tracking not available")
+        return
+
+    print("\n" + "=" * 60)
+    print("PERFORMANCE REPORT")
+    print("=" * 60)
+
+    perf_storage = PerformanceStorage()
+
+    # Calculate end date (today) and start date
+    from datetime import timedelta
+    end_date = datetime.now().strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    try:
+        report = perf_storage.generate_performance_report(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        # Display summary
+        print(report.generate_summary())
+        print("")
+
+        # Display full report if there's data
+        if report.agent_performances:
+            print(report.generate_markdown())
+
+            # Save report to file
+            reports_dir = Path("./reports/performance")
+            reports_dir.mkdir(parents=True, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"performance_report_{ticker or 'all'}_{timestamp}.md"
+            filepath = reports_dir / filename
+
+            with open(filepath, "w") as f:
+                f.write(report.generate_markdown())
+
+            print(f"\nReport saved to: {filepath}")
+
+    except Exception as e:
+        print(f"Error generating report: {e}")
+
+
 def main():
     """Main entry point."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="TradingAgents - Multi-Agent Financial Trading Framework",
+        epilog="Examples: %(prog)s --performance-report --ticker AAPL"
+    )
+    parser.add_argument(
+        "--performance-report",
+        action="store_true",
+        help="Generate performance report for tracked predictions"
+    )
+    parser.add_argument(
+        "--update-outcomes",
+        action="store_true",
+        help="Update outcomes for past predictions with current price data"
+    )
+    parser.add_argument(
+        "--ticker",
+        type=str,
+        help="Ticker symbol for performance report (default: all tickers)"
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=30,
+        help="Number of days to include in performance report (default: 30)"
+    )
+
+    args = parser.parse_args()
+
+    # Handle performance reporting mode
+    if args.performance_report:
+        generate_performance_report(ticker=args.ticker, days=args.days)
+        return
+
+    # Handle outcome update mode
+    if args.update_outcomes:
+        tickers = [args.ticker] if args.ticker else load_tickers()
+        update_performance_outcomes(tickers)
+        return
+
+    # Normal analysis mode
     print("=" * 60)
     print("Trading Agents - Scheduled Analysis")
     print("=" * 60)
