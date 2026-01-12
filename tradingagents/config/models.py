@@ -150,11 +150,19 @@ class R2StorageConfig(BaseModel):
         )
 
 
+class TLDRStyle(str):
+    """TL;DR style options."""
+    COMPACT = "compact"
+    DETAILED = "detailed"
+
+
 class StorageConfig(BaseModel):
     """Storage configuration."""
 
     local_path: Optional[Path] = Field(default=None)
     r2: Optional[R2StorageConfig] = Field(default=None)
+    include_tldr: bool = Field(default=True, description="Include TL;DR summary at the top of reports")
+    tldr_style: Literal["compact", "detailed"] = Field(default="compact", description="TL;DR summary style")
 
     @model_validator(mode="after")
     def set_defaults(self) -> "StorageConfig":
