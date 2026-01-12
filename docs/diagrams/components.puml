@@ -1,0 +1,99 @@
+@startuml Component Diagram
+!theme plain
+
+skinparam component {
+    BackgroundColor<<External>> LightBlue
+    BackgroundColor<<Core>> LightGreen
+    BackgroundColor<<Storage>> LightYellow
+}
+
+' External components
+component [Alpha Vantage API] <<External>> as av_api
+component [Yahoo Finance API] <<External>> as yf_api
+component [Google Search API] <<External>> as gg_api
+component [OpenAI API] <<External>> as openai_api
+component [Anthropic API] <<External>> as anthropic_api
+component [Google AI API] <<External>> as google_api
+
+' Core components
+component "DataFlow Interface\nroute_to_vendor()" <<Core>> as dataflow
+component "Vendor Registry" <<Core>> as registry
+
+component "Market Analyst" <<Core>> as market
+component "Social Analyst" <<Core>> as social
+component "News Analyst" <<Core>> as news
+component "Fundamentals Analyst" <<Core>> as fundamentals
+
+component "Bull Researcher" <<Core>> as bull
+component "Bear Researcher" <<Core>> as bear
+component "Research Manager" <<Core>> as research_mgr
+
+component "Trader Agent" <<Core>> as trader
+
+component "Risky Analyst" <<Core>> as risky
+component "Safe Analyst" <<Core>> as safe
+component "Neutral Analyst" <<Core>> as neutral
+component "Risk Manager" <<Core>> as risk_mgr
+
+component "LangGraph State Machine" <<Core>> as langgraph
+component "TradingGraph Orchestrator" <<Core>> as trading_graph
+
+component "Storage Service" <<Storage>> as storage
+component "Local Storage Backend" <<Storage>> as local_storage
+component "R2 Storage Backend" <<Storage>> as r2_storage
+component "PDF Converter" <<Storage>> as pdf_conv
+
+' External connections
+av_api -down-> dataflow
+yf_api -down-> dataflow
+gg_api -down-> dataflow
+openai_api -down-> market
+openai_api -down-> social
+openai_api -down-> news
+openai_api -down-> fundamentals
+openai_api -down-> bull
+openai_api -down-> bear
+openai_api -down-> research_mgr
+openai_api -down-> trader
+openai_api -down-> risky
+openai_api -down-> safe
+openai_api -down-> neutral
+openai_api -down-> risk_mgr
+
+anthropic_api -down-> market
+anthropic_api -down-> social
+anthropic_api -down-> news
+anthropic_api -down-> fundamentals
+google_api -down-> market
+google_api -down-> social
+google_api -down-> news
+google_api -down-> fundamentals
+
+' Internal connections
+dataflow --> registry
+registry -down-> market
+registry -down-> social
+registry -down-> news
+registry -down-> fundamentals
+
+market -down-> langgraph
+social -down-> langgraph
+news -down-> langgraph
+fundamentals -down-> langgraph
+
+langgraph -down-> trading_graph
+trading_graph --> bull
+trading_graph --> bear
+trading_graph --> research_mgr
+trading_graph --> trader
+trading_graph --> risky
+trading_graph --> safe
+trading_graph --> neutral
+trading_graph --> risk_mgr
+
+trading_graph --> storage
+storage --> local_storage
+storage --> r2_storage
+local_storage --> pdf_conv
+
+@enduml

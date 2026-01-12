@@ -1,0 +1,95 @@
+@startuml Architecture Overview
+!theme plain
+
+skinparam rectangle {
+    BackgroundColor<<External>> LightBlue
+    BackgroundColor<<Core>> LightGreen
+    BackgroundColor<<Storage>> LightYellow
+    BackgroundColor<<Integration>> LightPink
+}
+
+package "External Data Sources" <<External>> {
+    [Alpha Vantage\nMarket Data, News, Sentiment] as AV
+    [Yahoo Finance\nBasic Market Data] as YF
+    [Google\nSearch, Embeddings] as GG
+    [LLM Providers\nOpenAI, Anthropic, Google] as LLM
+}
+
+package "TradingAgents Core" <<Core>> {
+    package "Data Layer" {
+        [Data Vendors\nAlpha Vantage, Yahoo, Google] as DV
+        [Data Cache\nCached market data] as DC
+    }
+
+    package "Agent Layer" {
+        [Analyst Team\nMarket, Social, News, Fundamentals] as AT
+        [Researcher Team\nBull, Bear, Research Manager] as RT
+        [Trading Team\nTrader Agent] as TT
+        [Risk Team\nRisky, Safe, Neutral, Risk Manager] as RMT
+        [Portfolio Manager\nPersonalized Recommendations] as PM
+    }
+
+    package "Orchestration Layer" {
+        [LangGraph\nState Machine] as LG
+        [TradingGraph\nWorkflow Orchestration] as TG
+    }
+}
+
+package "Storage Layer" <<Storage>> {
+    [Local Storage\nFilesystem] as LS
+    [Cloudflare R2\nCloud Storage] as R2
+    [Google Sheets\nPortfolio Data] as GS
+    [PDF Generator\nReport Conversion] as PDF
+}
+
+package "Integration Layer" <<Integration>> {
+    [GitHub Actions\nScheduled Execution] as GHA
+    [Discord\nNotifications] as DIS
+}
+
+' Data flow
+AV --> DV : Market data
+YF --> DV : Stock data
+GG --> DV : Search results
+LLM --> AT : LLM inference
+LLM --> RT : LLM inference
+LLM --> TT : LLM inference
+LLM --> RMT : LLM inference
+LLM --> PM : LLM inference
+
+DV --> DC : Cached data
+DC --> AT : Raw data
+
+AT --> RT : Analyst reports
+RT --> TG : Investment plan
+TG --> TT : Research plan
+TT --> RMT : Trading plan
+RMT --> TG : Final decision
+RMT --> PM : Final decision
+
+GS --> PM : Portfolio state
+PM --> TG : Personalized recommendation
+
+TG --> LS : Reports
+TG --> R2 : Cloud reports
+LS --> PDF : MD to PDF
+
+GHA --> TG : Trigger
+DIS --> TG : Notifications
+
+note right of AT
+  Parallel execution
+  of all analysts
+end note
+
+note right of RT
+  Bull vs Bear debate
+  then synthesis
+end note
+
+note right of RMT
+  Three-way risk debate
+  final assessment
+end note
+
+@enduml

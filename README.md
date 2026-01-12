@@ -83,13 +83,21 @@ Our framework decomposes complex trading tasks into specialized roles. This ensu
   <img src="assets/trader.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
 
-### Risk Management and Portfolio Manager
-- Continuously evaluates portfolio risk by assessing market volatility, liquidity, and other risk factors. The risk management team evaluates and adjusts trading strategies, providing assessment reports to the Portfolio Manager for final decision.
-- The Portfolio Manager approves/rejects the transaction proposal. If approved, the order will be sent to the simulated exchange and executed.
+### Risk Management Team
+- Continuously evaluates portfolio risk by assessing market volatility, liquidity, and other risk factors. The risk management team evaluates and adjusts trading strategies, providing assessment reports to guide final trading decisions.
 
 <p align="center">
   <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
+
+### Portfolio Manager Team (New!)
+- **Portfolio Manager**: Generates personalized investment recommendations by combining TradingAgents analysis with the user's actual portfolio state (positions, transaction history, cash balance) stored in Google Sheets. Provides context-aware advice on:
+  - Position sizing based on current allocation (e.g., "Add 10 shares" vs "Buy")
+  - Diversification considerations (e.g., "You already have 15% in AAPL")
+  - Risk management based on existing exposure (e.g., "Consider taking profits at $275")
+  - Specific action recommendations with quantities: add, hold, reduce, or close positions
+
+> **Example Output**: Instead of generic "BUY AAPL", the Portfolio Manager provides: *"You own 50 shares @ $240 (15% of portfolio, +$900 unrealized gain). **Add 10 shares** at current price (~$258). New allocation would be ~18% (max 20%). Consider taking partial profits at $275."*
 
 ## Installation
 
@@ -126,6 +134,35 @@ Optional cloud storage (Cloudflare R2):
 - **R2_ACCOUNT_ID**, **R2_ACCESS_KEY_ID**, **R2_SECRET_ACCESS_KEY** - R2 credentials
 - **R2_BUCKET_NAME** - Bucket for storing reports
 - **R2_PUBLIC_URL** - Public URL for permanent report access
+
+### Portfolio Manager (Optional)
+
+Enable personalized portfolio-aware trading recommendations by configuring Google Sheets integration:
+
+```bash
+# Enable Portfolio Manager
+PORTFOLIO_MANAGER_ENABLED=true
+
+# Google Sheets API
+GOOGLE_SHEETS_CREDENTIALS=/path/to/credentials.json
+GOOGLE_SHEET_ID=your_sheet_id
+
+# Portfolio constraints (optional)
+PORTFOLIO_MAX_POSITION_SIZE=0.20  # Max 20% per ticker
+PORTFOLIO_MIN_CASH_RESERVE=0.10   # Keep 10% cash minimum
+```
+
+**Google Sheets Setup**:
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create a project
+2. Enable the Google Sheets API
+3. Create a service account and download the credentials JSON file
+4. Create a new Google Spreadsheet and copy its ID from the URL: `https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit`
+5. Share the spreadsheet with the service account email (from the credentials file)
+
+The Portfolio Manager will automatically create three sheets in your spreadsheet:
+- **Positions**: Current holdings with market value and unrealized P&L
+- **Transactions**: Full transaction history (buy/sell orders)
+- **Summary**: Portfolio metrics (total value, cash balance, daily P&L)
 
 See `.env.example` for all available configuration options.
 
@@ -196,8 +233,28 @@ The TL;DR automatically extracts key information from each report type:
 - **Market Reports**: Current price, RSI, MACD, moving averages, recommendation
 - **Fundamentals Reports**: Revenue, analyst ratings, key financial metrics
 - **Final Decisions**: Trading decision, entry/stop/target levels, key arguments
+- **Personalized Recommendations** (Portfolio Manager enabled): Current position, portfolio context, specific action with quantity
 
 To disable TL;DR summaries, set `storage.include_tldr = False` in your configuration.
+
+## Architecture Diagrams
+
+Comprehensive PlantUML diagrams are available to help you understand the system architecture:
+
+- **[High-Level Architecture](docs/diagrams/architecture.puml)** - Overall system architecture with major modules
+- **[Agent Collaboration Flow](docs/diagrams/agent-flow.puml)** - Complete agent workflow from input to output
+- **[Data Flow Diagram](docs/diagrams/data-flow.puml)** - How data flows through the system
+- **[LangGraph State Machine](docs/diagrams/state-machine.puml)** - State transitions and execution flow
+- **[Component Diagram](docs/diagrams/components.puml)** - Detailed component structure and interfaces
+- **[Agent Class Hierarchy](docs/diagrams/agent-classes.puml)** - Inheritance relationships between agents
+- **[Deployment Diagram](docs/diagrams/deployment.puml)** - System deployment architecture
+
+### Viewing Diagrams
+
+You can view the PlantUML diagrams using:
+- **VS Code**: Install the [PlantUML extension](https://marketplace.visualstudio.com/items?items=jebbs.plantuml)
+- **Online**: Paste the `.puml` content at [PlantUML Online](https://plantuml.com/plantuml/uml/)
+- **CLI**: Install PlantUML and run `plantuml docs/diagrams/*.puml`
 
 ## TradingAgents Package
 
@@ -238,6 +295,18 @@ config["data_vendors"] = {
     "technical_indicators": "yfinance",      # Options: yfinance, alpha_vantage, local
     "fundamental_data": "alpha_vantage",     # Options: openai, alpha_vantage, local
     "news_data": "alpha_vantage",            # Options: openai, alpha_vantage, google, local
+}
+
+# Enable Portfolio Manager (optional, requires Google Sheets setup)
+config["portfolio_manager"] = {
+    "enabled": True,
+    "google_sheets": {
+        "credentials_path": "/path/to/credentials.json",
+        "sheet_id": "your_sheet_id",
+        "sheet_name": "Trading Portfolio",
+    },
+    "max_position_size": 0.20,  # Max 20% per ticker
+    "min_cash_reserve": 0.10,   # Keep 10% cash minimum
 }
 
 # Initialize with custom config

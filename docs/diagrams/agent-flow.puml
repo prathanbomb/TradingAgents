@@ -1,0 +1,100 @@
+@startuml Agent Collaboration Flow
+!theme plain
+
+skinparam activity {
+    BackgroundColor<<Input>> LightBlue
+    BackgroundColor<<Analyst>> LightGreen
+    BackgroundColor<<Research>> LightYellow
+    BackgroundColor<<Trading>> LightPink
+    BackgroundColor<<Risk>> Orange
+    BackgroundColor<<Portfolio>> Lavender
+    BackgroundColor<<Output>> LightCyan
+}
+
+start
+
+:Input Parameters <<Input>>;
+:Ticker symbol (e.g., AAPL);
+:Trade date;
+
+partition "Data Gathering" {
+    :Fetch market data\n(Alpha Vantage, Yahoo);
+    :Fetch social sentiment;
+    :Fetch news data;
+    :Fetch fundamentals;
+}
+
+:Analyst Phase;
+
+split
+    :Market Analyst\nTechnical analysis\n(RSI, MACD, SMA);
+split again
+    :Social Analyst\nSocial media sentiment;
+split again
+    :News Analyst\nNews analysis\nInsider sentiment;
+split again
+    :Fundamentals Analyst\nFinancial statements\nValuation metrics;
+end split
+
+:Collector\nGathers all reports;
+
+partition "Research Phase" {
+    repeat
+        :Bull Researcher\nPresents bullish case;
+        :Bear Researcher\nPresents bearish case;
+    repeat while (max rounds\nnot reached?) is (Yes)
+    ->No;
+    :Research Manager\nSynthesizes debate\nCreates investment plan;
+}
+
+partition "Trading Phase" {
+    :Trader Agent\nReviews investment plan\nCreates trading plan\nwith entry/exit points;
+}
+
+partition "Risk Phase" {
+    repeat
+        :Risky Analyst\nAdvocates aggression;
+        :Safe Analyst\nAdvocates caution;
+        :Neutral Analyst\nBalanced view;
+    repeat while (max rounds\nnot reached?) is (Yes)
+    ->No;
+    :Risk Manager\nFinal risk assessment\nAdjusts position size;
+}
+
+partition "Portfolio Phase <<Portfolio>>" {
+    if (Portfolio Manager\nenabled?) then (Yes)
+        :Load portfolio state\nfrom Google Sheets;
+        :Portfolio Manager\nGenerate personalized\nrecommendation with:
+        - Current position analysis
+        - Portfolio context
+        - Specific action & quantity;
+    else (No)
+        :Skip personalized\nrecommendation;
+    endif
+}
+
+partition "Output" {
+    :Generate Reports:
+    - Market Report
+    - Sentiment Report
+    - News Report
+    - Fundamentals Report
+    - Investment Plan
+    - Trading Plan
+    - Final Decision
+    - Personalized Recommendation (if enabled);
+
+    :Store Reports\n(Local + R2);
+
+    if (has PDF) then (Yes)
+        :Convert to PDF;
+    endif
+
+    if (Discord enabled) then (Yes)
+        :Send notification;
+    endif
+}
+
+stop
+
+@enduml

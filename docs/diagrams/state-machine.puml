@@ -1,0 +1,108 @@
+@startuml LangGraph State Machine
+!theme plain
+
+skinparam state {
+    BackgroundColor<<Start>> LightGreen
+    BackgroundColor<<Analyst>> LightBlue
+    BackgroundColor<<Research>> LightYellow
+    BackgroundColor<<Trading>> LightPink
+    BackgroundColor<<Risk>> Orange
+    BackgroundColor<<Portfolio>> Lavender
+    BackgroundColor<<End>> LightCyan
+}
+
+state "Start" as start <<Start>>
+
+state "Market Analyst" as market
+state "Market Tool Node" as market_tool
+state "Social Analyst" as social
+state "Social Tool Node" as social_tool
+state "News Analyst" as news
+state "News Tool Node" as news_tool
+state "Fundamentals Analyst" as fundamentals
+state "Fundamentals Tool Node" as fundamentals_tool
+state "Analyst Collector" as collector
+
+state "Bull Researcher" as bull
+state "Bear Researcher" as bear
+state "Research Manager" as research_mgr
+
+state "Trader" as trader
+
+state "Risky Analyst" as risky
+state "Safe Analyst" as safe
+state "Neutral Analyst" as neutral
+state "Risk Manager" as risk_mgr
+
+state "Portfolio Manager" as portfolio_mgr <<Portfolio>>
+
+state "End" as end <<End>>
+
+' Transitions
+start --> market : Initialize state
+start --> social
+start --> news
+start --> fundamentals
+
+market --> market_tool : Tool call?
+market_tool --> market : Tool response
+market --> collector : No more tools
+
+social --> social_tool : Tool call?
+social_tool --> social : Tool response
+social --> collector : No more tools
+
+news --> news_tool : Tool call?
+news_tool --> news : Tool response
+news --> collector : No more tools
+
+fundamentals --> fundamentals_tool : Tool call?
+fundamentals_tool --> fundamentals : Tool response
+fundamentals --> collector : No more tools
+
+collector --> bull : All reports collected
+
+bull --> bear : Bull argument
+bear --> bull : Bear argument
+
+bull --> research_mgr : Max rounds?\nor consensus
+bear --> research_mgr : Max rounds?\nor consensus
+
+research_mgr --> trader : Investment plan
+
+trader --> risky : Trading plan
+
+risky --> safe : Risky view
+safe --> neutral : Safe view
+neutral --> risky : Neutral view
+
+risky --> risk_mgr : Max rounds?\nor consensus
+safe --> risk_mgr : Max rounds?\nor consensus
+neutral --> risk_mgr : Max rounds?\nor consensus
+
+risk_mgr --> portfolio_mgr : Final decision
+portfolio_mgr --> end : Personalized recommendation
+
+note right of collector
+  Waits for all analysts
+  to complete before
+  proceeding to research
+end note
+
+note right of research_mgr
+  Synthesizes bull vs bear
+  debate into investment plan
+end note
+
+note right of risk_mgr
+  Final risk assessment
+  and position sizing
+end note
+
+note right of portfolio_mgr
+  Generates personalized
+  advice based on
+  portfolio context
+end note
+
+@enduml

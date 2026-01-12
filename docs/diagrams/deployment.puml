@@ -1,0 +1,72 @@
+@startuml Deployment Diagram
+!theme plain
+
+node "GitHub" {
+    node "GitHub Actions" <<Cloud>> as gh_actions {
+        component ".workflow files" as workflow
+        component "scheduled_analysis.py" as script
+    }
+    node "GitHub Repository" <<Repo>> as gh_repo {
+        artifact "tradingagents/" as code
+    }
+}
+
+node "Cloudflare" <<Cloud>> {
+    node "Cloudflare R2" <<Storage>> as r2 {
+        artifact "reports/" as reports
+    }
+}
+
+node "Discord" <<Cloud>> {
+    component "Discord Webhook" as webhook
+}
+
+node "Developer Machine" <<Local>> {
+    component "Python Environment" as python {
+        component "TradingAgents" as app
+        component ".env file" as env
+    }
+    component "Local Storage" as local {
+        artifact "data/" as data
+        artifact "reports/" as local_reports
+    }
+}
+
+node "External APIs" <<External>> {
+    component "Alpha Vantage" as av
+    component "OpenAI" as openai
+    component "Anthropic" as anthropic
+}
+
+' Connections
+gh_repo --> code : Source code
+gh_actions --> code : Checkout
+workflow --> script : Trigger
+script --> app : Run analysis
+
+app --> av : Fetch data
+app --> openai : LLM calls
+app --> anthropic : LLM calls
+
+app --> local : Store reports
+app --> r2 : Upload reports
+app --> webhook : Notifications
+
+env --> app : Configuration
+
+note right of gh_actions
+  Scheduled execution
+  (cron: daily at 9am ET)
+end note
+
+note right of r2
+  Public URL access
+  to reports
+end note
+
+note right of webhook
+  Decision notifications
+  with report links
+end note
+
+@enduml

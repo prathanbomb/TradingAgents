@@ -79,3 +79,11 @@ class AgentState(MessagesState):
     # risk management team discussion step
     risk_debate_state: Annotated[RiskDebateState, replace_value]
     final_trade_decision: Annotated[str, "Final decision made by the Risk Analysts"]
+
+    # portfolio manager step
+    portfolio_state: Annotated[
+        Optional[str], "Current portfolio state (formatted summary)"
+    ]
+    personalized_recommendation: Annotated[
+        str, "Personalized recommendation from Portfolio Manager"
+    ]

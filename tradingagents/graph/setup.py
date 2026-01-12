@@ -22,6 +22,12 @@ from tradingagents.agents.base import (
     create_trader_from_config,
     TRADER_CONFIG,
 )
+from tradingagents.agents.base.portfolio_manager import (
+    create_portfolio_manager_from_config,
+)
+from tradingagents.agents.base.portfolio_manager_configs import (
+    PORTFOLIO_MANAGER_CONFIG,
+)
 from tradingagents.agents.utils.agent_states import AgentState
 
 from .conditional_logic import ConditionalLogic
@@ -42,6 +48,8 @@ class GraphSetup:
         invest_judge_memory,
         risk_manager_memory,
         conditional_logic: ConditionalLogic,
+        portfolio_manager_memory=None,
+        portfolio_service=None,
     ):
         """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
@@ -52,6 +60,8 @@ class GraphSetup:
         self.trader_memory = trader_memory
         self.invest_judge_memory = invest_judge_memory
         self.risk_manager_memory = risk_manager_memory
+        self.portfolio_manager_memory = portfolio_manager_memory
+        self.portfolio_service = portfolio_service
         self.conditional_logic = conditional_logic
 
     def setup_graph(
@@ -113,6 +123,16 @@ class GraphSetup:
             self.deep_thinking_llm, self.risk_manager_memory, RISK_MANAGER_CONFIG
         )
 
+        # Create portfolio manager node if enabled
+        portfolio_manager_node = None
+        if self.portfolio_service:
+            portfolio_manager_node = create_portfolio_manager_from_config(
+                self.deep_thinking_llm,
+                self.portfolio_manager_memory or self.invest_judge_memory,
+                PORTFOLIO_MANAGER_CONFIG,
+                self.portfolio_service,
+            )
+
         # Create workflow
         workflow = StateGraph(AgentState)
 
@@ -133,6 +153,10 @@ class GraphSetup:
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Safe Analyst", safe_analyst)
         workflow.add_node("Risk Judge", risk_manager_node)
+
+        # Add portfolio manager node if enabled
+        if portfolio_manager_node:
+            workflow.add_node("Portfolio Manager", portfolio_manager_node)
 
         # Add collector node for parallel analyst execution
         workflow.add_node("Analyst Collector", analyst_collector_node)
@@ -206,7 +230,12 @@ class GraphSetup:
             },
         )
 
-        workflow.add_edge("Risk Judge", END)
+        # Risk Judge goes to Portfolio Manager (if enabled) or END
+        if portfolio_manager_node:
+            workflow.add_edge("Risk Judge", "Portfolio Manager")
+            workflow.add_edge("Portfolio Manager", END)
+        else:
+            workflow.add_edge("Risk Judge", END)
 
         # Compile and return
         return workflow.compile()

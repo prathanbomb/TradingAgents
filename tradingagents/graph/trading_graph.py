@@ -132,6 +132,24 @@ class TradingAgentsGraph:
         self.trader_memory = FinancialSituationMemory("trader_memory", self.config)
         self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory", self.config)
         self.risk_manager_memory = FinancialSituationMemory("risk_manager_memory", self.config)
+        self.portfolio_manager_memory = FinancialSituationMemory("portfolio_manager_memory", self.config)
+
+        # Initialize portfolio service if configured
+        self.portfolio_service = None
+        if self._config.portfolio_manager.is_configured:
+            try:
+                from tradingagents.portfolio import GoogleSheetsPortfolio
+                gs_config = self._config.portfolio_manager.google_sheets
+                self.portfolio_service = GoogleSheetsPortfolio(
+                    sheet_id=gs_config.sheet_id,
+                    credentials_path=gs_config.credentials_path,
+                    sheet_name=gs_config.sheet_name,
+                )
+                # Initialize the spreadsheet with headers if needed
+                self.portfolio_service.initialize_sheets()
+                logger.info("Portfolio Manager enabled with Google Sheets")
+            except Exception as e:
+                logger.warning(f"Failed to initialize portfolio service: {e}")
 
         # Create tool nodes
         self.tool_nodes = self._create_tool_nodes()
@@ -148,6 +166,8 @@ class TradingAgentsGraph:
             self.invest_judge_memory,
             self.risk_manager_memory,
             self.conditional_logic,
+            self.portfolio_manager_memory,
+            self.portfolio_service,
         )
 
         self.propagator = Propagator()
@@ -269,6 +289,7 @@ class TradingAgentsGraph:
             },
             "investment_plan": final_state["investment_plan"],
             "final_trade_decision": final_state["final_trade_decision"],
+            "personalized_recommendation": final_state.get("personalized_recommendation", ""),
         }
 
         # Save to file
@@ -297,6 +318,9 @@ class TradingAgentsGraph:
         )
         self.reflector.reflect_risk_manager(
             self.curr_state, returns_losses, self.risk_manager_memory
+        )
+        self.reflector.reflect_portfolio_manager(
+            self.curr_state, returns_losses, self.portfolio_manager_memory
         )
 
     def process_signal(self, full_signal):

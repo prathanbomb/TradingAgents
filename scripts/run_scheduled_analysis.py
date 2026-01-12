@@ -175,8 +175,8 @@ def send_discord_notification(
     report_links = []
     if storage_result and storage_result.get("reports"):
         reports = storage_result["reports"]
-        # Prioritize final decision and investment plan
-        priority_reports = ["final_trade_decision", "investment_plan", "trader_investment_plan"]
+        # Prioritize personalized recommendation, final decision, and investment plan
+        priority_reports = ["personalized_recommendation", "final_trade_decision", "investment_plan", "trader_investment_plan"]
         for report_name in priority_reports:
             if report_name in reports:
                 report = reports[report_name]
@@ -249,6 +249,11 @@ def run_analysis(ticker: str, trade_date: str, config: dict) -> dict | None:
             "trader_investment_plan": final_state.get("trader_investment_plan", ""),
             "final_trade_decision": final_state.get("final_trade_decision", ""),
         }
+
+        # Add personalized recommendation if portfolio manager is enabled
+        if personalized_rec := final_state.get("personalized_recommendation"):
+            reports["personalized_recommendation"] = personalized_rec
+            print("  Personalized recommendation generated (Portfolio Manager enabled)")
 
         # Save reports
         print("  Saving reports...")

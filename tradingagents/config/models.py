@@ -108,6 +108,31 @@ class DebateConfig(BaseModel):
     max_recur_limit: int = Field(default=100, ge=1)
 
 
+class GoogleSheetsConfig(BaseModel):
+    """Google Sheets portfolio storage configuration."""
+
+    credentials_path: Optional[str] = Field(default=None)
+    sheet_id: Optional[str] = Field(default=None)
+    sheet_name: str = Field(default="Trading Portfolio")
+
+    @property
+    def is_configured(self) -> bool:
+        """Check if all required Google Sheets settings are present."""
+        return all([
+            self.credentials_path,
+            self.sheet_id,
+        ])
+
+    @classmethod
+    def from_env(cls) -> "GoogleSheetsConfig":
+        """Create Google Sheets config from environment variables."""
+        return cls(
+            credentials_path=os.getenv("GOOGLE_SHEETS_CREDENTIALS"),
+            sheet_id=os.getenv("GOOGLE_SHEET_ID"),
+            sheet_name=os.getenv("GOOGLE_SHEET_NAME", "Trading Portfolio"),
+        )
+
+
 class R2StorageConfig(BaseModel):
     """Cloudflare R2 storage configuration."""
 
@@ -187,6 +212,43 @@ class StorageConfig(BaseModel):
         )
 
 
+class PortfolioManagerConfig(BaseModel):
+    """Portfolio Manager configuration."""
+
+    enabled: bool = Field(default=False)
+    google_sheets: Optional[GoogleSheetsConfig] = Field(default=None)
+    max_position_size: float = Field(default=0.20, ge=0.01, le=1.0, description="Max position size as percentage of portfolio")
+    min_cash_reserve: float = Field(default=0.10, ge=0.0, le=1.0, description="Min cash reserve as percentage of portfolio")
+
+    @model_validator(mode="after")
+    def check_google_sheets_consistency(self) -> "PortfolioManagerConfig":
+        """Ensure Google Sheets config is present if enabled."""
+        if self.enabled and self.google_sheets is None:
+            # Try to load from env if not provided
+            self.google_sheets = GoogleSheetsConfig.from_env()
+            if not self.google_sheets.is_configured:
+                # If still not configured, disable portfolio manager
+                self.enabled = False
+        return self
+
+    @property
+    def is_configured(self) -> bool:
+        """Check if portfolio manager is properly configured."""
+        return self.enabled and self.google_sheets is not None and self.google_sheets.is_configured
+
+    @classmethod
+    def from_env(cls) -> "PortfolioManagerConfig":
+        """Create portfolio manager config from environment variables."""
+        enabled = os.getenv("PORTFOLIO_MANAGER_ENABLED", "false").lower() == "true"
+        google_sheets = GoogleSheetsConfig.from_env()
+        return cls(
+            enabled=enabled and google_sheets.is_configured,
+            google_sheets=google_sheets if google_sheets.is_configured else None,
+            max_position_size=float(os.getenv("PORTFOLIO_MAX_POSITION_SIZE", "0.20")),
+            min_cash_reserve=float(os.getenv("PORTFOLIO_MIN_CASH_RESERVE", "0.10")),
+        )
+
+
 class TradingAgentsConfig(BaseModel):
     """Root configuration model for TradingAgents."""
 
@@ -196,6 +258,7 @@ class TradingAgentsConfig(BaseModel):
     paths: PathConfig = Field(default_factory=PathConfig)
     debate: DebateConfig = Field(default_factory=DebateConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
+    portfolio_manager: PortfolioManagerConfig = Field(default_factory=PortfolioManagerConfig)
 
     @classmethod
     def from_legacy_dict(cls, config: Dict) -> "TradingAgentsConfig":

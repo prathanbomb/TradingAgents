@@ -119,3 +119,17 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
             "RISK JUDGE", judge_decision, situation, returns_losses
         )
         risk_manager_memory.add_situations([(situation, result)])
+
+    def reflect_portfolio_manager(self, current_state, returns_losses, portfolio_manager_memory):
+        """Reflect on portfolio manager's personalized recommendation and update memory."""
+        situation = self._extract_current_situation(current_state)
+        personalized_rec = current_state.get("personalized_recommendation", "")
+
+        if not personalized_rec:
+            # Skip reflection if no personalized recommendation was generated
+            return
+
+        result = self._reflect_on_component(
+            "PORTFOLIO MANAGER", personalized_rec, situation, returns_losses
+        )
+        portfolio_manager_memory.add_situations([(situation, result)])

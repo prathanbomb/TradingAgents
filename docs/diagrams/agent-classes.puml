@@ -1,0 +1,96 @@
+@startuml Agent Class Hierarchy
+!theme plain
+
+abstract class BaseAgent {
+    # name: str
+    # role: str
+    # llm: BaseLLM
+    + analyze(context: dict) -> str
+    # get_system_prompt() -> str
+}
+
+abstract class Analyst <<Analyst>> {
+    + report: str
+    + tools: list[Tool]
+    + analyze_technical(data) -> str
+}
+
+class MarketAnalyst {
+    + tools: [get_stock_data, get_technical_indicators]
+    + analyze_market(ticker, date) -> str
+}
+
+class SocialAnalyst {
+    + tools: [get_social_sentiment, get_embeddings]
+    + analyze_sentiment(ticker, date) -> str
+}
+
+class NewsAnalyst {
+    + tools: [get_news, search_web]
+    + analyze_news(ticker, date) -> str
+}
+
+class FundamentalsAnalyst {
+    + tools: [get_financials, get_valuation]
+    + analyze_fundamentals(ticker) -> str
+}
+
+abstract class Researcher <<Researcher>> {
+    + stance: str (bull/bear)
+    + arguments: list[str]
+    + present_research(reports) -> str
+}
+
+class BullResearcher {
+    + stance: "bullish"
+    + present_bull_case(reports) -> str
+}
+
+class BearResearcher {
+    + stance: "bearish"
+    + present_bear_case(reports) -> str
+}
+
+abstract class Manager <<Manager>> {
+    + synthesize(inputs: list) -> str
+}
+
+class ResearchManager {
+    + synthesize_debate(bull_case, bear_case) -> str
+    + create_investment_plan() -> str
+}
+
+class Trader {
+    + create_trading_plan(investment_plan) -> str
+    + determine_entry_exit() -> tuple
+}
+
+class RiskAnalyst {
+    + stance: str (risky/safe/neutral)
+    + assess_risk(trading_plan) -> str
+}
+
+class RiskManager {
+    + synthesize_risk_debate(risky, safe, neutral) -> str
+    + final_decision() -> str
+}
+
+' Inheritance
+BaseAgent <|-- Analyst
+Analyst <|-- MarketAnalyst
+Analyst <|-- SocialAnalyst
+Analyst <|-- NewsAnalyst
+Analyst <|-- FundamentalsAnalyst
+
+BaseAgent <|-- Researcher
+Researcher <|-- BullResearcher
+Researcher <|-- BearResearcher
+
+BaseAgent <|-- Manager
+Manager <|-- ResearchManager
+Manager <|-- RiskManager
+
+BaseAgent <|-- Trader
+Researcher <|-- RiskAnalyst
+
+@enduml

@@ -1,0 +1,119 @@
+@startuml Data Flow Diagram
+!theme plain
+
+skinparam rectangle {
+    BackgroundColor<<Source>> LightBlue
+    BackgroundColor<<Process>> LightGreen
+    BackgroundColor<<Store>> LightYellow
+    BackgroundColor<<Destination>> LightPink
+}
+
+' Data Sources
+rectangle "External Sources" <<Source>> {
+    database "Alpha Vantage" as AV {
+        folder "Stock Prices" as AV1
+        folder "News" as AV2
+        folder "Sentiment" as AV3
+    }
+    database "Yahoo Finance" as YF {
+        folder "Market Data" as YF1
+    }
+    database "Google" as GG {
+        folder "Search" as GG1
+        folder "Embeddings" as GG2
+    }
+    database "Google Sheets" as GSHEET {
+        folder "Portfolio Data" as GS1
+    }
+}
+
+' Data Cache
+rectangle "Data Cache" <<Store>> {
+    database "Cached Data" as DC {
+        folder "Price Data" as DC1
+        folder "News Data" as DC2
+    }
+}
+
+' Processing
+rectangle "Agent Processing" <<Process>> {
+    rectangle "Market Analyst" as MA
+    rectangle "Social Analyst" as SA
+    rectangle "News Analyst" as NA
+    rectangle "Fundamentals Analyst" as FA
+}
+
+rectangle "Portfolio Management" <<Process>> {
+    rectangle "Portfolio Manager" as PM
+}
+
+rectangle "Research Team" <<Process>> {
+    rectangle "Bull Researcher" as BR
+    rectangle "Bear Researcher" as BER
+    rectangle "Research Manager" as RM
+}
+
+rectangle "Trading Team" <<Process>> {
+    rectangle "Trader" as TR
+}
+
+rectangle "Risk Team" <<Process>> {
+    rectangle "Risk Manager" as RMM
+}
+
+' Storage
+rectangle "Storage" <<Store>> {
+    database "Local Storage" as LS {
+        folder "Reports/MD" as LS1
+        folder "Reports/PDF" as LS2
+    }
+    database "Cloudflare R2" as R2 {
+        folder "Public URLs" as R21
+    }
+}
+
+' Destinations
+rectangle "Destinations" <<Destination>> {
+    queue "Discord" as DIS
+    rectangle "User" as USR
+}
+
+' Data flows
+AV1 --> DC1 : Fetch prices
+AV2 --> DC2 : Fetch news
+AV3 --> SA : Sentiment data
+YF1 --> DC1 : Market data
+GG1 --> NA : Search results
+GG2 --> SA : Embeddings
+
+DC1 --> MA : Price data
+DC1 --> FA : Price data
+DC2 --> NA : Cached news
+
+MA --> BR : Market report
+SA --> BR : Sentiment report
+NA --> BR : News report
+FA --> BR : Fundamentals report
+
+BR --> RM : Bull case
+BER --> RM : Bear case
+
+RM --> TR : Investment plan
+
+TR --> RMM : Trading plan
+
+RMM --> LS1 : Final decision
+RMM --> R21 : Cloud upload
+RMM --> PM : Final decision
+
+GS1 --> PM : Portfolio state
+
+PM --> LS1 : Personalized recommendation
+PM --> R21 : Cloud upload
+
+LS1 --> LS2 : PDF conversion
+LS2 --> USR : Download
+R21 --> DIS : Notification
+DIS --> USR : Alert
+
+@enduml
