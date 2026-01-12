@@ -172,6 +172,33 @@ Optionally receive notifications when analysis completes:
 2. Add `DISCORD_WEBHOOK_URL` to GitHub Secrets
 3. Notifications include decision (BUY/SELL/HOLD) and report links
 
+### TL;DR Summaries
+
+All trading reports now include a **TL;DR (Too Long; Didn't Read)** summary at the top for quick reading:
+
+```markdown
+## TL;DR Summary
+
+**Ticker:** AAPL | **Date:** 2026-01-10 | **Current Price:** $258.64
+
+### Key Points
+- **Recommendation:** BUY
+- **RSI:** 25.95 (oversold)
+- **50-day SMA:** $272.57
+- **200-day SMA:** $232.80
+- **MACD:** -3.34 (bearish)
+
+### One-Line Summary
+Deeply oversold conditions with RSI at 26 present buying opportunity within long-term uptrend...
+```
+
+The TL;DR automatically extracts key information from each report type:
+- **Market Reports**: Current price, RSI, MACD, moving averages, recommendation
+- **Fundamentals Reports**: Revenue, analyst ratings, key financial metrics
+- **Final Decisions**: Trading decision, entry/stop/target levels, key arguments
+
+To disable TL;DR summaries, set `storage.include_tldr = False` in your configuration.
+
 ## TradingAgents Package
 
 ### Implementation Details
