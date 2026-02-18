@@ -195,7 +195,8 @@ class PredictionRecord:
         bullish_words = ["buy", "bullish", "positive", "growth", "opportunity", "undervalued"]
         bearish_words = ["sell", "bearish", "negative", "risk", "concern", "overvalued"]
 
-        bullish_count = sum(1 for word in bullish_words if word in content_lower := content.lower())
+        content_lower = content.lower()
+        bullish_count = sum(1 for word in bullish_words if word in content_lower)
         bearish_count = sum(1 for word in bearish_words if word in content_lower)
 
         if bullish_count > bearish_count * 1.5:
