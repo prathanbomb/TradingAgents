@@ -38,6 +38,11 @@ class LocalStorageBackend(BaseStorageBackend):
             Absolute path to the stored file.
         """
         destination = self.base_path / remote_key
+
+        # Skip if source and destination are the same file
+        if local_path.resolve() == destination.resolve():
+            return str(destination)
+
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(local_path, destination)
         return str(destination)
