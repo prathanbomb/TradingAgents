@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 from .backends.local import LocalStorageBackend
 from .base import BaseStorageBackend
-from . import tldr
 
 if TYPE_CHECKING:
     from tradingagents.config import StorageConfig
@@ -98,57 +97,22 @@ class StorageService:
         self,
         content: str,
         remote_key: str,
-        metadata: Optional[Dict[str, str]] = None,
         content_type: Optional[str] = None,
+        **kwargs,
     ) -> Dict[str, str]:
-        """Upload report content, automatically adding TL;DR if configured.
+        """Upload report content to all configured backends.
 
-        This method checks the storage configuration and adds TL;DR summary
-        if include_tldr is enabled (default: True).
+        This is a convenience wrapper around upload_report.
 
         Args:
             content: Report content as string.
             remote_key: The key/path to store the report under.
-            metadata: Optional metadata for TL;DR generation (ticker, date, etc.).
             content_type: Optional MIME type. Defaults to text/markdown for .md files.
 
         Returns:
             Dict mapping backend name to storage path/URI.
         """
-        if self._config.include_tldr and remote_key.endswith(".md"):
-            return self.upload_report_with_tldr(content, remote_key, metadata, content_type)
         return self.upload_report(content, remote_key, content_type)
-
-    def upload_report_with_tldr(
-        self,
-        content: str,
-        remote_key: str,
-        metadata: Optional[Dict[str, str]] = None,
-        content_type: Optional[str] = None,
-    ) -> Dict[str, str]:
-        """Upload report content with TL;DR summary prepended.
-
-        Args:
-            content: Report content as string.
-            remote_key: The key/path to store the report under.
-            metadata: Optional metadata for TL;DR generation (ticker, date, etc.).
-            content_type: Optional MIME type. Defaults to text/markdown for .md files.
-
-        Returns:
-            Dict mapping backend name to storage path/URI.
-        """
-        # Extract report type from remote_key (e.g., "market_report.md" -> "market_report")
-        report_type = remote_key.split("/")[-1].replace(".md", "")
-
-        # Generate TL;DR
-        tldr_summary = tldr.extract_tldr(
-            content, report_type, metadata or {}
-        )
-
-        # Prepend TL;DR to content
-        content_with_tldr = tldr_summary + content
-
-        return self.upload_report(content_with_tldr, remote_key, content_type)
 
     def upload_file(
         self,

@@ -106,20 +106,13 @@ def save_reports(ticker: str, trade_date: str, reports: dict) -> dict | None:
     prefix = f"{ticker}_{trade_date}_{job_id}"
     report_results = {}
 
-    # Metadata for TL;DR generation
-    metadata = {
-        "ticker": ticker,
-        "date": trade_date,
-    }
-
     for name, content in reports.items():
         if not content:
             continue
 
         md_key = f"{prefix}/{name}.md"
-        # Use upload_report_auto to automatically add TL;DR if configured
         paths = storage.upload_report_auto(
-            content, md_key, metadata=metadata, content_type="text/markdown"
+            content, md_key, content_type="text/markdown"
         )
 
         report_results[name] = {
