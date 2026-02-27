@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from tradingagents.observability.config import ObservabilityConfig
 
 
 LLMProvider = Literal["openai", "anthropic", "google", "openrouter", "ollama", "openai-compatible"]
@@ -251,6 +252,7 @@ class TradingAgentsConfig(BaseModel):
     debate: DebateConfig = Field(default_factory=DebateConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     portfolio_manager: PortfolioManagerConfig = Field(default_factory=PortfolioManagerConfig)
+    observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
 
     @classmethod
     def from_legacy_dict(cls, config: Dict) -> "TradingAgentsConfig":
@@ -321,6 +323,10 @@ class TradingAgentsConfig(BaseModel):
             r2=r2_config,
         )
 
+        # Handle observability config from legacy dict
+        observability_dict = config.get("observability", {})
+        observability = ObservabilityConfig(**observability_dict) if observability_dict else ObservabilityConfig()
+
         return cls(
             llm=llm,
             embedding=embedding,
@@ -328,6 +334,7 @@ class TradingAgentsConfig(BaseModel):
             paths=paths,
             debate=debate,
             storage=storage,
+            observability=observability,
         )
 
     def to_legacy_dict(self) -> Dict:
@@ -371,6 +378,17 @@ class TradingAgentsConfig(BaseModel):
                     "endpoint_url": self.storage.r2.endpoint_url,
                     "presigned_url_expiry": self.storage.r2.presigned_url_expiry,
                 } if self.storage.r2 else None,
+            },
+            "observability": {
+                "enabled": self.observability.enabled,
+                "db_path": str(self.observability.db_path) if self.observability.db_path else None,
+                "max_queue_size": self.observability.max_queue_size,
+                "batch_size": self.observability.batch_size,
+                "flush_interval": self.observability.flush_interval,
+                "capture_full_transcripts": self.observability.capture_full_transcripts,
+                "sample_rate": self.observability.sample_rate,
+                "structured_logging": self.observability.structured_logging,
+                "log_level": self.observability.log_level,
             },
         }
 
@@ -425,6 +443,7 @@ class TradingAgentsConfig(BaseModel):
         )
 
         storage = StorageConfig.from_env()
+        observability = ObservabilityConfig.from_env()
 
         return cls(
             llm=llm,
@@ -433,4 +452,5 @@ class TradingAgentsConfig(BaseModel):
             paths=paths,
             debate=debate,
             storage=storage,
+            observability=observability,
         )

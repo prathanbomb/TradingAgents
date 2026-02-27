@@ -6,6 +6,8 @@ from pathlib import Path
 import json
 from datetime import date
 from typing import Dict, Any, Tuple, List, Optional, Union
+import asyncio
+import uuid
 
 from langchain_openai import ChatOpenAI
 
@@ -45,6 +47,10 @@ from .setup import GraphSetup
 from .propagation import Propagator
 from .reflection import Reflector
 from .signal_processing import SignalProcessor
+
+# Observability imports (optional, for decision tracking)
+from tradingagents.observability.instrumentation import create_observation_run
+from tradingagents.observability.pipeline import create_pipeline
 
 
 class TradingAgentsGraph:
@@ -179,6 +185,17 @@ class TradingAgentsGraph:
         self.ticker = None
         self.log_states_dict = {}  # date to full state dict
 
+        # Initialize observability if enabled
+        self.observability_pipeline = None
+        self.observability_enabled = self._config.observability.enabled
+
+        if self.observability_enabled:
+            logger.info("Observability enabled, initializing data collection pipeline")
+            # Note: Pipeline is started lazily to avoid blocking __init__
+            self._observability_initialized = False
+        else:
+            self._observability_initialized = False
+
         # Set up the graph
         self.graph = self.graph_setup.setup_graph(selected_analysts)
         logger.info(f"Graph initialized with analysts: {selected_analysts}")
@@ -220,6 +237,19 @@ class TradingAgentsGraph:
             ),
         }
 
+    async def _ensure_observability_initialized(self):
+        """Lazily initialize observability pipeline."""
+        if self.observability_enabled and not self._observability_initialized:
+            db_path = self._config.observability.db_path
+            self.observability_pipeline = await create_pipeline(
+                db_path=str(db_path),
+                max_queue_size=self._config.observability.max_queue_size,
+                batch_size=self._config.observability.batch_size,
+                auto_start=True
+            )
+            self._observability_initialized = True
+            logger.info(f"Observability pipeline initialized: {db_path}")
+
     def propagate(self, company_name, trade_date):
         """Run the trading agents graph for a company on a specific date."""
         logger.info(f"Starting analysis for {company_name} on {trade_date}")
@@ -231,6 +261,29 @@ class TradingAgentsGraph:
             company_name, trade_date
         )
         args = self.propagator.get_graph_args()
+
+        # Create observation run if enabled
+        collector = None
+        extractor = None
+        run_id = None
+        if self.observability_enabled:
+            run_id, collector, extractor = create_observation_run(company_name)
+            logger.debug(f"Created observation run: {run_id}")
+
+        # Check if we're in an async context
+        try:
+            loop = asyncio.get_running_loop()
+            in_async_context = True
+        except RuntimeError:
+            in_async_context = False
+
+        # Create async task for observability if enabled and in async context
+        observability_task = None
+        if self.observability_enabled and in_async_context and collector:
+            # Schedule async event capture without blocking
+            observability_task = asyncio.create_task(
+                self._capture_observability_async(collector, extractor, init_agent_state, args, run_id)
+            )
 
         if self.debug:
             # Debug mode with tracing
@@ -256,6 +309,11 @@ class TradingAgentsGraph:
         # Process and return decision
         decision = self.process_signal(final_state["final_trade_decision"])
         logger.info(f"Analysis completed for {company_name}: {decision}")
+
+        # Capture observability data if enabled (sync fallback)
+        if self.observability_enabled and not in_async_context:
+            # Not in async context, do sync capture
+            self._capture_observability_sync(extractor, final_state, company_name, trade_date, run_id)
 
         return final_state, decision
 
@@ -326,3 +384,79 @@ class TradingAgentsGraph:
     def process_signal(self, full_signal):
         """Process a signal to extract the core decision."""
         return self.signal_processor.process_signal(full_signal)
+
+    async def _capture_observability_async(self, collector, extractor, init_state, args, run_id):
+        """Capture observability data asynchronously during graph execution.
+
+        This method runs as a background task to capture events without blocking
+        the trading pipeline.
+        """
+        await self._ensure_observability_initialized()
+
+        # Stream events and capture decisions
+        events_collected = []
+        try:
+            async for event in collector.collect_events(self.graph, init_state, config=args.get("config", {})):
+                events_collected.append(event)
+                # Non-blocking enqueue
+                if self.observability_pipeline:
+                    await self.observability_pipeline.producer(event)
+        except Exception as e:
+            logger.warning(f"Async event capture failed: {e}")
+
+        # Extract decision records from final state (after graph completes)
+        final_state = self.curr_state  # Set by propagate()
+        if final_state and extractor:
+            try:
+                records = extractor.extract_decision_records(
+                    final_state, self.ticker, final_state.get("trade_date", ""), run_id
+                )
+                for record in records:
+                    await self.observability_pipeline.producer(record)
+                logger.debug(f"Captured {len(records)} decision records for {self.ticker}")
+            except Exception as e:
+                logger.warning(f"Decision record extraction failed: {e}")
+
+    def _capture_observability_sync(self, extractor, final_state, ticker, trade_date, run_id):
+        """Capture observability data synchronously (fallback for non-async contexts).
+
+        This method is used when not in an async event loop. It stores decisions
+        directly without the async pipeline.
+        """
+        if not extractor:
+            return
+
+        try:
+            # Extract decision records from final state
+            records = extractor.extract_decision_records(
+                final_state, ticker, trade_date, run_id or str(uuid.uuid4())
+            )
+
+            if records:
+                # Store directly using SQLite backend (simpler path for non-async contexts)
+                from tradingagents.observability.storage import SQLiteDecisionStore
+                store = SQLiteDecisionStore(str(self._config.observability.db_path))
+
+                # Try async first if loop is running
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Create task for non-blocking store
+                    asyncio.create_task(store.store_batch(records))
+                except RuntimeError:
+                    # No loop running, run synchronously
+                    import asyncio
+                    asyncio.run(store.store_batch(records))
+
+                logger.debug(f"Captured {len(records)} decision records for {ticker}")
+        except Exception as e:
+            logger.warning(f"Sync observability capture failed: {e}")
+
+    async def shutdown_observability(self):
+        """Gracefully shutdown observability pipeline.
+
+        Call this before destroying the TradingAgentsGraph instance to ensure
+        all pending observability data is flushed.
+        """
+        if self.observability_pipeline:
+            await self.observability_pipeline.stop()
+            logger.info("Observability pipeline shutdown complete")
