@@ -1,7 +1,51 @@
-.venv/
+# Version control
 .git/
+.gitignore
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and tooling
 .idea/
+.vscode/
+.claude/
+*.iml
+
+# Python bytecode and build artifacts
 __pycache__/
 *.pyc
-.env
+*.pyo
 *.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+
+# Environment and secrets
+.env
+.env.*
+
+# Runtime/generated directories
+data/
+reports/
+results/
+eval_results/
+eval_data/
+
+# Documentation and static assets
+assets/
+docs/
+*.md
+LICENSE
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+tests/
+
+# Planning artifacts
+.planning/
