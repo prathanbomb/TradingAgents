@@ -5,10 +5,13 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from tradingagents.api.auth import create_auth_dependency
 from tradingagents.api.config import APIConfig
 from tradingagents.api.deps import get_api_config
+from tradingagents.api.errors import register_error_handlers
+from tradingagents.api.middleware import add_trace_middleware
 from tradingagents.api.routes import health, jobs, observability
 
 logger = logging.getLogger(__name__)
@@ -25,7 +28,7 @@ async def lifespan(app: FastAPI):
     if swept:
         logger.warning(f"Marked {swept} stale running job(s) as failed")
 
-    logger.info(f"TradingAgents API started (port={config.api_port}, redis={config.redis_url})")
+    logger.info(f"TradingAgents API started (port={config.api_port})")
     yield
     logger.info("TradingAgents API shutting down")
 
@@ -36,12 +39,26 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="TradingAgents API",
-        version="0.1.0",
+        version="0.2.0",
         description="Multi-Agent LLM Financial Trading Framework",
         lifespan=lifespan,
         dependencies=[auth] if config.auth_enabled else [],
     )
 
+    # Middleware
+    add_trace_middleware(app)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Error handling
+    register_error_handlers(app)
+
+    # Routes
     app.include_router(jobs.router)
     app.include_router(health.router)
     app.include_router(observability.router)

@@ -19,7 +19,7 @@ from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import *
 from tradingagents.config import TradingAgentsConfig
-from tradingagents.default_config import DEFAULT_CONFIG
+
 from tradingagents.agents.utils.memory import FinancialSituationMemory
 from tradingagents.agents.utils.agent_states import (
     AgentState,

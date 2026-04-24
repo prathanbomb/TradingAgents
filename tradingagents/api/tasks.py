@@ -1,13 +1,13 @@
-"""RQ task functions for running analysis jobs."""
+"""Background task functions for running analysis jobs."""
 
-import json
 import logging
-import uuid
-from pathlib import Path
+from typing import Callable, Optional
 
 from tradingagents.api.job_store import JobStore
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_ANALYSTS = ["market", "social", "news", "fundamentals"]
 
 
 def run_analysis(
@@ -16,37 +16,40 @@ def run_analysis(
     trade_date: str,
     config_snapshot: dict | None = None,
     db_path: str = "./data/jobs.db",
+    analysts: Optional[list[str]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
 ):
-    """RQ task: run trading analysis for a single ticker.
-
-    This is executed by the RQ worker process.
-    """
+    """Run trading analysis for a single ticker as a background task."""
     store = JobStore(db_path=db_path)
 
     try:
         store.update_status(job_id, "running")
+
+        if cancel_check and cancel_check():
+            store.update_status(job_id, "cancelled", error="Cancelled before analysis started")
+            logger.info(f"Job {job_id} cancelled before analysis")
+            return
 
         from tradingagents.config.models import TradingAgentsConfig
         from tradingagents.graph.trading_graph import TradingAgentsGraph
         from tradingagents.config import StorageConfig
         from tradingagents.storage import StorageService
 
-        # Build config from snapshot or env
         if config_snapshot:
             config = TradingAgentsConfig.from_legacy_dict(config_snapshot)
         else:
             config = TradingAgentsConfig.from_env()
 
-        # Handle direct API key (same pattern as run_scheduled_analysis.py)
         import os
         if api_key := os.getenv("LLM_API_KEY"):
             config_dict = config.to_legacy_dict()
             config_dict["api_key_env_var"] = f"__DIRECT_KEY__:{api_key}"
             config = TradingAgentsConfig.from_legacy_dict(config_dict)
 
-        # Run analysis
+        selected_analysts = analysts or DEFAULT_ANALYSTS
+
         graph = TradingAgentsGraph(
-            selected_analysts=["market", "social", "news", "fundamentals"],
+            selected_analysts=selected_analysts,
             config=config,
             debug=False,
         )
@@ -79,7 +82,12 @@ def run_analysis(
                     "url": storage.get_report_url(key),
                 }
 
-        # Send Discord notification
+        # Check cancellation before finalizing
+        if cancel_check and cancel_check():
+            store.update_status(job_id, "cancelled", error="Cancelled after analysis completed")
+            logger.info(f"Job {job_id} cancelled after analysis")
+            return
+
         _send_discord(ticker, trade_date, decision, report_paths)
 
         # Update job as completed

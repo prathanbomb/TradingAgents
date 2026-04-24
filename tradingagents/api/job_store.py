@@ -11,6 +11,15 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
+# Valid state transitions: current_status -> set of allowed next statuses
+VALID_TRANSITIONS: Dict[str, set] = {
+    "pending": {"running", "cancelled"},
+    "running": {"completed", "failed", "cancelled"},
+    "completed": set(),
+    "failed": set(),
+    "cancelled": set(),
+}
+
 
 class JobRecord(BaseModel):
     job_id: str
@@ -24,6 +33,8 @@ class JobRecord(BaseModel):
     reports: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     config_snapshot: Optional[Dict[str, Any]] = None
+    idempotency_key: Optional[str] = None
+    analysts: Optional[List[str]] = None
 
 
 class JobStore:
@@ -64,7 +75,9 @@ class JobStore:
                 result TEXT,
                 reports TEXT,
                 error TEXT,
-                config_snapshot TEXT
+                config_snapshot TEXT,
+                idempotency_key TEXT,
+                analysts TEXT
             )
         """)
         conn.execute(
@@ -76,6 +89,10 @@ class JobStore:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_jobs_submitted ON jobs(submitted_at DESC)"
         )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idempotency ON jobs(idempotency_key)"
+            " WHERE idempotency_key IS NOT NULL"
+        )
         conn.commit()
         conn.close()
 
@@ -84,18 +101,36 @@ class JobStore:
         for field in ("result", "reports", "config_snapshot"):
             if d.get(field):
                 d[field] = json.loads(d[field])
+        if d.get("analysts"):
+            d["analysts"] = json.loads(d["analysts"])
         return JobRecord(**d)
 
-    def create(self, job_id: str, ticker: str, trade_date: str,
-               config_snapshot: Optional[Dict] = None) -> JobRecord:
+    def create(
+        self,
+        job_id: str,
+        ticker: str,
+        trade_date: str,
+        config_snapshot: Optional[Dict] = None,
+        idempotency_key: Optional[str] = None,
+        analysts: Optional[List[str]] = None,
+    ) -> JobRecord:
         now = datetime.now(timezone.utc).isoformat()
         conn = self._get_connection()
         try:
             conn.execute(
-                """INSERT INTO jobs (job_id, ticker, trade_date, status, submitted_at, config_snapshot)
-                   VALUES (?, ?, ?, 'pending', ?, ?)""",
-                (job_id, ticker, trade_date, now,
-                 json.dumps(config_snapshot) if config_snapshot else None),
+                """INSERT INTO jobs
+                   (job_id, ticker, trade_date, status, submitted_at, config_snapshot,
+                    idempotency_key, analysts)
+                   VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)""",
+                (
+                    job_id,
+                    ticker,
+                    trade_date,
+                    now,
+                    json.dumps(config_snapshot) if config_snapshot else None,
+                    idempotency_key,
+                    json.dumps(analysts) if analysts else None,
+                ),
             )
             conn.commit()
             return self.get(job_id)
@@ -110,10 +145,21 @@ class JobStore:
         finally:
             conn.close()
 
+    def find_by_idempotency_key(self, key: str) -> Optional[JobRecord]:
+        conn = self._get_connection()
+        try:
+            row = conn.execute(
+                "SELECT * FROM jobs WHERE idempotency_key = ?", (key,)
+            ).fetchone()
+            return self._row_to_record(row) if row else None
+        finally:
+            conn.close()
+
     def list_jobs(
         self,
         status: Optional[str] = None,
         ticker: Optional[str] = None,
+        trade_date: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[List[JobRecord], int]:
@@ -127,6 +173,9 @@ class JobStore:
             if ticker:
                 where += " AND ticker = ?"
                 params.append(ticker)
+            if trade_date:
+                where += " AND trade_date = ?"
+                params.append(trade_date)
 
             total = conn.execute(
                 f"SELECT COUNT(*) FROM jobs {where}", params
@@ -139,6 +188,16 @@ class JobStore:
             return [self._row_to_record(r) for r in rows], total
         finally:
             conn.close()
+
+    def validate_transition(self, job_id: str, new_status: str) -> Optional[str]:
+        """Check if transition is valid. Returns error message or None."""
+        job = self.get(job_id)
+        if not job:
+            return f"Job '{job_id}' not found"
+        allowed = VALID_TRANSITIONS.get(job.status, set())
+        if new_status not in allowed:
+            return f"Cannot transition job '{job_id}' from '{job.status}' to '{new_status}'"
+        return None
 
     def update_status(
         self,
@@ -185,10 +244,19 @@ class JobStore:
             row = conn.execute(
                 "SELECT status FROM jobs WHERE job_id = ?", (job_id,)
             ).fetchone()
-            if not row or row["status"] not in ("pending",):
+            if not row or row["status"] not in ("pending", "running"):
                 return False
             self.update_status(job_id, "cancelled")
             return True
+        finally:
+            conn.close()
+
+    def delete(self, job_id: str) -> bool:
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+            conn.commit()
+            return cursor.rowcount > 0
         finally:
             conn.close()
 

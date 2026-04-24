@@ -1,9 +1,11 @@
 """Pydantic request/response models for the API."""
 
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
+
+JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
 
 class JobRequest(BaseModel):
@@ -11,6 +13,7 @@ class JobRequest(BaseModel):
     tickers: Optional[List[str]] = None
     trade_date: Optional[str] = None
     analysts: Optional[List[str]] = None
+    callback_url: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_tickers(self) -> "JobRequest":
@@ -28,38 +31,36 @@ class JobRequest(BaseModel):
     def get_trade_date(self) -> str:
         return self.trade_date or date.today().strftime("%Y-%m-%d")
 
+    def get_analysts(self) -> Optional[List[str]]:
+        if self.analysts:
+            return [a.strip() for a in self.analysts]
+        return None
+
 
 class JobResponse(BaseModel):
     job_id: str
     ticker: str
     trade_date: str
-    status: str
+    status: JobStatus
     submitted_at: Optional[str] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     result: Optional[Dict[str, Any]] = None
     reports: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
-
-
-class JobListResponse(BaseModel):
-    jobs: List[JobResponse]
-    total: int
-    limit: int
-    offset: int
+    _links: Optional[Dict[str, str]] = None
 
 
 class JobSubmitResponse(BaseModel):
-    job_ids: List[str]
-    tickers: List[str]
+    job_id: str
+    ticker: str
     trade_date: str
     message: str
 
 
 class HealthResponse(BaseModel):
     status: str
-    redis: str
-    workers: int
+    task_slot: str
     jobs_db: str
 
 

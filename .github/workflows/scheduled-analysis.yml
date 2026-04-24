@@ -15,17 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -51,7 +40,7 @@ jobs:
           pip install --upgrade pip
           pip install -e .
 
-      - name: Start API and Worker
+      - name: Run analysis
         env:
           # LLM Configuration
           LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
@@ -76,17 +65,11 @@ jobs:
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
 
-          # Redis and Storage
-          REDIS_URL: redis://localhost:6379/0
+          # Storage
           DB_PATH: ./data/jobs.db
           REPORTS_OUTPUT_DIR: ./reports
-          MAX_WORKERS: 1
           JOB_TIMEOUT: 3600
         run: |
-          # Start worker in background
-          python -m tradingagents.api.worker &
-          WORKER_PID=$!
-
           # Start API server in background
           python -m tradingagents.api.main &
           API_PID=$!
@@ -110,53 +93,43 @@ jobs:
 
           echo "Submitting analysis for tickers: $TICKERS"
 
-          # Submit job(s) via API
-          RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/jobs \
-            -H "Content-Type: application/json" \
-            -d "{\"tickers\": [\"$(echo $TICKERS | tr ',' '","')\"]}")
-          echo "Submit response: $RESPONSE"
-
-          # Extract first job ID and poll all jobs until complete
-          JOBS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(' '.join(d['job_ids']))")
-          echo "Job IDs: $JOBS"
-
-          # Poll until all jobs complete or timeout
-          TIMEOUT=7200
-          ELAPSED=0
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-            ALL_DONE=true
-            for JOB_ID in $JOBS; do
-              STATUS=$(curl -s http://localhost:8000/api/v1/jobs/$JOB_ID | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
-              echo "Job $JOB_ID: $STATUS"
-              if [ "$STATUS" != "completed" ] && [ "$STATUS" != "failed" ] && [ "$STATUS" != "cancelled" ]; then
-                ALL_DONE=false
-              fi
-            done
-            if [ "$ALL_DONE" = true ]; then
-              echo "All jobs finished"
-              break
-            fi
-            sleep 30
-            ELAPSED=$((ELAPSED + 30))
-          done
-
-          # Print final results
-          for JOB_ID in $JOBS; do
-            echo "--- Job $JOB_ID ---"
-            curl -s http://localhost:8000/api/v1/jobs/$JOB_ID | python3 -m json.tool
-          done
-
-          # Stop services
-          kill $API_PID $WORKER_PID 2>/dev/null || true
-
-          # Check if any failed
+          # Submit jobs sequentially (one at a time)
           FAILED=0
-          for JOB_ID in $JOBS; do
-            STATUS=$(curl -s http://localhost:8000/api/v1/jobs/$JOB_ID | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          IFS=',' read -ra TICKER_ARRAY <<< "$TICKERS"
+          for TICKER in "${TICKER_ARRAY[@]}"; do
+            echo "--- Submitting $TICKER ---"
+            RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/jobs \
+              -H "Content-Type: application/json" \
+              -d "{\"ticker\": \"$TICKER\"}")
+            echo "Submit response: $RESPONSE"
+
+            JOB_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+            echo "Job ID: $JOB_ID"
+
+            # Poll until complete or timeout
+            TIMEOUT=7200
+            ELAPSED=0
+            while [ $ELAPSED -lt $TIMEOUT ]; do
+              STATUS=$(curl -s http://localhost:8000/api/v1/jobs/$JOB_ID | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+              echo "Job $JOB_ID ($TICKER): $STATUS"
+              if [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ] || [ "$STATUS" = "cancelled" ]; then
+                break
+              fi
+              sleep 30
+              ELAPSED=$((ELAPSED + 30))
+            done
+
+            # Print result
+            echo "--- Result for $TICKER ---"
+            curl -s http://localhost:8000/api/v1/jobs/$JOB_ID | python3 -m json.tool
+
             if [ "$STATUS" = "failed" ]; then
               FAILED=1
             fi
           done
+
+          # Stop API
+          kill $API_PID 2>/dev/null || true
 
           exit $FAILED
 
