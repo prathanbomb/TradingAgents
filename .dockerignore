@@ -53,3 +53,7 @@ tests/
 # No longer needed (API-based)
 scripts/
 tickers.txt
+
+# Legacy build files
+setup.py
+requirements.txt

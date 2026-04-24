@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 
 # Copy build files and create minimal package structure for dependency resolution
-COPY pyproject.toml setup.py ./
+COPY pyproject.toml ./
 RUN mkdir tradingagents && touch tradingagents/__init__.py
 
 # Create virtual environment and install dependencies
