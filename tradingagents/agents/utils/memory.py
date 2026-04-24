@@ -140,7 +140,7 @@ class FinancialSituationMemory:
         """Determine embedding model based on config and provider."""
         if self.config.get("embedding_model"):
             return self.config["embedding_model"]
-        elif backend_url == "http://localhost:11434/v1":
+        elif ":11434" in backend_url:
             return "nomic-embed-text"
         elif "z.ai" in backend_url:
             return "embedding-3"

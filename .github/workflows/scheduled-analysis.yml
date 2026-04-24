@@ -1,19 +1,19 @@
 name: Trading Analysis
 
 on:
-  workflow_dispatch:  # Manual trigger from GitHub UI
+  workflow_dispatch:
     inputs:
       tickers:
         description: 'Override tickers (comma-separated, leave empty to use tickers.txt)'
         required: false
         default: ''
-  repository_dispatch:  # Allow external trigger via API
+  repository_dispatch:
     types: [run-analysis]
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 2 hour timeout for multiple tickers
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
@@ -31,7 +31,7 @@ jobs:
           sudo apt-get install -y \
             libpango-1.0-0 \
             libpangocairo-1.0-0 \
-            libgdk-pixbuf2.0-0 \
+            libgdk-pixbuf-2.0-0 \
             libffi-dev \
             shared-mime-info
 
@@ -40,7 +40,7 @@ jobs:
           pip install --upgrade pip
           pip install -e .
 
-      - name: Run scheduled analysis
+      - name: Run analysis
         env:
           # LLM Configuration
           LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
@@ -65,16 +65,73 @@ jobs:
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
 
-          # Reports Output
+          # Storage
+          DB_PATH: ./data/jobs.db
           REPORTS_OUTPUT_DIR: ./reports
-
-          # Discord Notifications
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-
-          # Custom tickers (from workflow_dispatch or repository_dispatch)
-          CUSTOM_TICKERS: ${{ github.event.inputs.tickers || github.event.client_payload.tickers || '' }}
+          JOB_TIMEOUT: 3600
         run: |
-          python scripts/run_scheduled_analysis.py
+          # Start API server in background
+          python -m tradingagents.api.main &
+          API_PID=$!
+
+          # Wait for API to be ready
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+              echo "API is ready"
+              break
+            fi
+            sleep 1
+          done
+
+          # Determine tickers
+          CUSTOM_TICKERS="${{ github.event.inputs.tickers || github.event.client_payload.tickers || '' }}"
+          if [ -n "$CUSTOM_TICKERS" ]; then
+            TICKERS=$(echo "$CUSTOM_TICKERS" | tr ',' '\n' | xargs | tr ' ' ',')
+          else
+            TICKERS=$(grep -v '^#' tickers.txt | grep -v '^$' | tr '\n' ',' | sed 's/,$//')
+          fi
+
+          echo "Submitting analysis for tickers: $TICKERS"
+
+          # Submit jobs sequentially (one at a time)
+          FAILED=0
+          IFS=',' read -ra TICKER_ARRAY <<< "$TICKERS"
+          for TICKER in "${TICKER_ARRAY[@]}"; do
+            echo "--- Submitting $TICKER ---"
+            RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/jobs \
+              -H "Content-Type: application/json" \
+              -d "{\"ticker\": \"$TICKER\"}")
+            echo "Submit response: $RESPONSE"
+
+            JOB_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+            echo "Job ID: $JOB_ID"
+
+            # Poll until complete or timeout
+            TIMEOUT=7200
+            ELAPSED=0
+            while [ $ELAPSED -lt $TIMEOUT ]; do
+              STATUS=$(curl -s http://localhost:8000/api/v1/jobs/$JOB_ID | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+              echo "Job $JOB_ID ($TICKER): $STATUS"
+              if [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ] || [ "$STATUS" = "cancelled" ]; then
+                break
+              fi
+              sleep 30
+              ELAPSED=$((ELAPSED + 30))
+            done
+
+            # Print result
+            echo "--- Result for $TICKER ---"
+            curl -s http://localhost:8000/api/v1/jobs/$JOB_ID | python3 -m json.tool
+
+            if [ "$STATUS" = "failed" ]; then
+              FAILED=1
+            fi
+          done
+
+          # Stop API
+          kill $API_PID 2>/dev/null || true
+
+          exit $FAILED
 
       - name: Upload reports as artifact
         if: always()

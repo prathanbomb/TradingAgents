@@ -19,7 +19,7 @@ from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import *
 from tradingagents.config import TradingAgentsConfig
-from tradingagents.default_config import DEFAULT_CONFIG
+
 from tradingagents.agents.utils.memory import FinancialSituationMemory
 from tradingagents.agents.utils.agent_states import (
     AgentState,
@@ -88,7 +88,7 @@ class TradingAgentsGraph:
 
         # Create necessary directories
         os.makedirs(
-            os.path.join(self.config["project_dir"], "dataflows/data_cache"),
+            self.config["data_cache_dir"],
             exist_ok=True,
         )
 

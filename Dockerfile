@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 
 # Copy build files and create minimal package structure for dependency resolution
-COPY pyproject.toml setup.py ./
+COPY pyproject.toml ./
 RUN mkdir tradingagents && touch tradingagents/__init__.py
 
 # Create virtual environment and install dependencies
@@ -45,16 +45,16 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /app
 
 COPY tradingagents/ tradingagents/
-COPY scripts/ scripts/
-COPY tickers.txt ./
 
 RUN mkdir -p /app/data /app/reports /app/results /app/eval_results && \
     chown -R trading:trading /app
 
 USER trading
 
+EXPOSE 8000
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     REPORTS_OUTPUT_DIR=/app/reports
 
-CMD ["python", "scripts/run_scheduled_analysis.py"]
+CMD ["python", "-m", "tradingagents.api.main"]
