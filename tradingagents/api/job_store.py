@@ -45,6 +45,13 @@ class JobStore:
 
     def _initialize_db(self):
         conn = self._get_connection()
+
+        # Drop legacy table if schema doesn't match
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+        if cols and "status" not in cols:
+            conn.execute("DROP TABLE jobs")
+            conn.commit()
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
                 job_id TEXT PRIMARY KEY,
