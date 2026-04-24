@@ -2,9 +2,10 @@
 
 import logging
 import uuid
+from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, Query, Response
 
 from tradingagents.api.config import APIConfig
 from tradingagents.api.deps import get_api_config, get_job_store, get_task_manager
@@ -62,17 +63,15 @@ def _run_and_release(
 
 @router.post("", status_code=202, response_model=JobSubmitResponse)
 async def submit_job(
-    request: Request,
-    response: Response,
-    body: JobRequest,
     background_tasks: BackgroundTasks,
+    job_req: JobRequest = Body(embed=False),
+    response: Response = None,
+    idempotency_key: Optional[str] = Header(None, alias="idempotency-key"),
     store: JobStore = Depends(get_job_store),
     config: APIConfig = Depends(get_api_config),
     manager: BackgroundTaskManager = Depends(get_task_manager),
 ):
     """Submit analysis job. Accepts single ticker."""
-    idempotency_key = request.headers.get("idempotency-key")
-
     if idempotency_key:
         existing = store.find_by_idempotency_key(idempotency_key)
         if existing:
@@ -89,9 +88,9 @@ async def submit_job(
             error_type="https://tradingagents.dev/errors/capacity",
         )
 
-    tickers = body.get_tickers()
-    trade_date = body.get_trade_date()
-    analysts = body.get_analysts()
+    tickers = job_req.get_tickers()
+    trade_date = date.today().strftime("%Y-%m-%d")
+    analysts = job_req.get_analysts()
     ticker = tickers[0]
 
     job_id = uuid.uuid4().hex[:12]

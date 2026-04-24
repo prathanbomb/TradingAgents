@@ -62,6 +62,7 @@ class JobStore:
         if cols and "status" not in cols:
             conn.execute("DROP TABLE jobs")
             conn.commit()
+            cols = []
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
@@ -80,6 +81,14 @@ class JobStore:
                 analysts TEXT
             )
         """)
+
+        # Migrate existing tables missing new columns
+        if cols:
+            if "idempotency_key" not in cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN idempotency_key TEXT")
+            if "analysts" not in cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN analysts TEXT")
+
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)"
         )

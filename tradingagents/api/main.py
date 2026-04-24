@@ -7,8 +7,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from tradingagents.api.auth import create_auth_dependency
-from tradingagents.api.config import APIConfig
+from tradingagents.api.auth import add_auth_middleware
 from tradingagents.api.deps import get_api_config
 from tradingagents.api.errors import register_error_handlers
 from tradingagents.api.middleware import add_trace_middleware
@@ -35,18 +34,16 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     config = get_api_config()
-    auth = create_auth_dependency(config)
 
     app = FastAPI(
         title="TradingAgents API",
         version="0.2.0",
         description="Multi-Agent LLM Financial Trading Framework",
         lifespan=lifespan,
-        dependencies=[auth] if config.auth_enabled else [],
     )
 
-    # Middleware
-    add_trace_middleware(app)
+    # Middleware (order matters: last added = first executed)
+    add_auth_middleware(app, config)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -54,6 +51,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    add_trace_middleware(app)
 
     # Error handling
     register_error_handlers(app)

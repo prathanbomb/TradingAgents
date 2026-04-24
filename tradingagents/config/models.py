@@ -93,10 +93,18 @@ class PathConfig(BaseModel):
             self.results_dir = Path(env_results) if env_results else Path("./results")
 
         if self.data_cache_dir is None:
-            self.data_cache_dir = self.project_dir / "dataflows" / "data_cache"
+            env_cache = os.getenv("DATA_CACHE_DIR")
+            if env_cache:
+                self.data_cache_dir = Path(env_cache)
+            else:
+                self.data_cache_dir = self.project_dir / "dataflows" / "data_cache"
 
         if self.data_dir is None:
-            self.data_dir = self.project_dir / "dataflows" / "data"
+            env_data = os.getenv("DATA_DIR")
+            if env_data:
+                self.data_dir = Path(env_data)
+            else:
+                self.data_dir = self.project_dir / "dataflows" / "data"
 
         return self
 

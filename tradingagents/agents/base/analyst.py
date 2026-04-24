@@ -1,7 +1,13 @@
 """Base analyst class and factory for creating analyst agents."""
 
+import logging
+import os
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
+
+logger = logging.getLogger(__name__)
+
+MAX_PROMPT_CHARS = int(os.getenv("MAX_PROMPT_CHARS", "200000"))
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
@@ -80,7 +86,23 @@ class BaseAnalyst:
             prompt = prompt.partial(ticker=ticker)
 
             chain = prompt | llm.bind_tools(config.tools)
-            result = chain.invoke(state["messages"])
+
+            messages = _trim_messages(state["messages"])
+
+            # Estimate prompt size (rough: 1 token ≈ 4 chars)
+            total_chars = sum(
+                len(m.content) if hasattr(m, 'content') else len(str(m))
+                for m in messages
+            )
+            # Add system message + template overhead
+            total_chars += len(config.system_message or "") + len(config.prompt_template or "")
+            est_tokens = total_chars // 4
+            logger.warning(
+                f"[{ticker}] {config.name} prompt: ~{est_tokens:,} tokens "
+                f"({total_chars:,} chars) across {len(messages)} messages"
+            )
+
+            result = chain.invoke(messages)
 
             # Extract report if no tool calls (final response)
             report = ""
@@ -93,6 +115,35 @@ class BaseAnalyst:
             }
 
         return analyst_node
+
+
+def _trim_messages(messages, max_chars=MAX_PROMPT_CHARS):
+    """Keep the most recent messages that fit within the char budget."""
+    if not messages:
+        return messages
+
+    total = sum(
+        len(m.content) if hasattr(m, 'content') else len(str(m))
+        for m in messages
+    )
+    if total <= max_chars:
+        return messages
+
+    # Always keep the first message (original user request)
+    first = messages[0]
+    first_chars = len(first.content) if hasattr(first, 'content') else len(str(first))
+    remaining_budget = max_chars - first_chars
+
+    trimmed = []
+    used = 0
+    for msg in reversed(messages[1:]):
+        chars = len(msg.content) if hasattr(msg, 'content') else len(str(msg))
+        if used + chars > remaining_budget:
+            break
+        trimmed.insert(0, msg)
+        used += chars
+
+    return [first] + trimmed
 
 
 def create_analyst_from_config(llm, config: AnalystConfig) -> Callable:

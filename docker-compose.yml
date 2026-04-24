@@ -1,4 +1,12 @@
 services:
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    restart: always
+
   api:
     build: .
     command: ["python", "-m", "tradingagents.api.main"]
@@ -8,10 +16,16 @@ services:
     environment:
       - DB_PATH=/app/data/jobs.db
       - REPORTS_OUTPUT_DIR=/app/reports
+      - DATA_CACHE_DIR=/app/data/data_cache
+      - DATA_DIR=/app/data/data
+      - MAX_PROMPT_CHARS=200000
     volumes:
       - app-data:/app/data
       - app-reports:/app/reports
+    depends_on:
+      - ollama
 
 volumes:
+  ollama:
   app-data:
   app-reports:

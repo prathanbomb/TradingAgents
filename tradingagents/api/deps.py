@@ -2,6 +2,8 @@
 
 from functools import lru_cache
 
+from fastapi import Depends
+
 from tradingagents.api.config import APIConfig
 from tradingagents.api.job_store import JobStore
 from tradingagents.api.task_manager import BackgroundTaskManager
@@ -12,10 +14,7 @@ def get_api_config() -> APIConfig:
     return APIConfig.from_env()
 
 
-@lru_cache
-def get_job_store(config: APIConfig = None) -> JobStore:
-    if config is None:
-        config = get_api_config()
+def get_job_store(config: APIConfig = Depends(get_api_config)) -> JobStore:
     return JobStore(db_path=config.db_path)
 
 

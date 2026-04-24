@@ -1,6 +1,5 @@
 """Pydantic request/response models for the API."""
 
-from datetime import date
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
@@ -11,7 +10,6 @@ JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 class JobRequest(BaseModel):
     ticker: Optional[str] = None
     tickers: Optional[List[str]] = None
-    trade_date: Optional[str] = None
     analysts: Optional[List[str]] = None
     callback_url: Optional[str] = None
 
@@ -27,9 +25,6 @@ class JobRequest(BaseModel):
         if self.tickers:
             return [t.upper().strip() for t in self.tickers]
         return [self.ticker.upper().strip()]
-
-    def get_trade_date(self) -> str:
-        return self.trade_date or date.today().strftime("%Y-%m-%d")
 
     def get_analysts(self) -> Optional[List[str]]:
         if self.analysts:

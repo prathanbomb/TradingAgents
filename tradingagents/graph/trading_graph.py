@@ -88,7 +88,7 @@ class TradingAgentsGraph:
 
         # Create necessary directories
         os.makedirs(
-            os.path.join(self.config["project_dir"], "dataflows/data_cache"),
+            self.config["data_cache_dir"],
             exist_ok=True,
         )
 
