@@ -1,19 +1,30 @@
 name: Trading Analysis
 
 on:
-  workflow_dispatch:  # Manual trigger from GitHub UI
+  workflow_dispatch:
     inputs:
       tickers:
         description: 'Override tickers (comma-separated, leave empty to use tickers.txt)'
         required: false
         default: ''
-  repository_dispatch:  # Allow external trigger via API
+  repository_dispatch:
     types: [run-analysis]
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 2 hour timeout for multiple tickers
+    timeout-minutes: 120
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
 
     steps:
       - name: Checkout repository
@@ -31,7 +42,7 @@ jobs:
           sudo apt-get install -y \
             libpango-1.0-0 \
             libpangocairo-1.0-0 \
-            libgdk-pixbuf2.0-0 \
+            libgdk-pixbuf-2.0-0 \
             libffi-dev \
             shared-mime-info
 
@@ -40,7 +51,7 @@ jobs:
           pip install --upgrade pip
           pip install -e .
 
-      - name: Run scheduled analysis
+      - name: Start API and Worker
         env:
           # LLM Configuration
           LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
@@ -65,16 +76,89 @@ jobs:
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
 
-          # Reports Output
+          # Redis and Storage
+          REDIS_URL: redis://localhost:6379/0
+          DB_PATH: ./data/jobs.db
           REPORTS_OUTPUT_DIR: ./reports
-
-          # Discord Notifications
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-
-          # Custom tickers (from workflow_dispatch or repository_dispatch)
-          CUSTOM_TICKERS: ${{ github.event.inputs.tickers || github.event.client_payload.tickers || '' }}
+          MAX_WORKERS: 1
+          JOB_TIMEOUT: 3600
         run: |
-          python scripts/run_scheduled_analysis.py
+          # Start worker in background
+          python -m tradingagents.api.worker &
+          WORKER_PID=$!
+
+          # Start API server in background
+          python -m tradingagents.api.main &
+          API_PID=$!
+
+          # Wait for API to be ready
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+              echo "API is ready"
+              break
+            fi
+            sleep 1
+          done
+
+          # Determine tickers
+          CUSTOM_TICKERS="${{ github.event.inputs.tickers || github.event.client_payload.tickers || '' }}"
+          if [ -n "$CUSTOM_TICKERS" ]; then
+            TICKERS=$(echo "$CUSTOM_TICKERS" | tr ',' '\n' | xargs | tr ' ' ',')
+          else
+            TICKERS=$(grep -v '^#' tickers.txt | grep -v '^$' | tr '\n' ',' | sed 's/,$//')
+          fi
+
+          echo "Submitting analysis for tickers: $TICKERS"
+
+          # Submit job(s) via API
+          RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/jobs \
+            -H "Content-Type: application/json" \
+            -d "{\"tickers\": [\"$(echo $TICKERS | tr ',' '","')\"]}")
+          echo "Submit response: $RESPONSE"
+
+          # Extract first job ID and poll all jobs until complete
+          JOBS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(' '.join(d['job_ids']))")
+          echo "Job IDs: $JOBS"
+
+          # Poll until all jobs complete or timeout
+          TIMEOUT=7200
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            ALL_DONE=true
+            for JOB_ID in $JOBS; do
+              STATUS=$(curl -s http://localhost:8000/api/v1/jobs/$JOB_ID | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+              echo "Job $JOB_ID: $STATUS"
+              if [ "$STATUS" != "completed" ] && [ "$STATUS" != "failed" ] && [ "$STATUS" != "cancelled" ]; then
+                ALL_DONE=false
+              fi
+            done
+            if [ "$ALL_DONE" = true ]; then
+              echo "All jobs finished"
+              break
+            fi
+            sleep 30
+            ELAPSED=$((ELAPSED + 30))
+          done
+
+          # Print final results
+          for JOB_ID in $JOBS; do
+            echo "--- Job $JOB_ID ---"
+            curl -s http://localhost:8000/api/v1/jobs/$JOB_ID | python3 -m json.tool
+          done
+
+          # Stop services
+          kill $API_PID $WORKER_PID 2>/dev/null || true
+
+          # Check if any failed
+          FAILED=0
+          for JOB_ID in $JOBS; do
+            STATUS=$(curl -s http://localhost:8000/api/v1/jobs/$JOB_ID | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+            if [ "$STATUS" = "failed" ]; then
+              FAILED=1
+            fi
+          done
+
+          exit $FAILED
 
       - name: Upload reports as artifact
         if: always()

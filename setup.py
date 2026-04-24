@@ -27,11 +27,6 @@ setup(
         "questionary>=2.0.1",
     ],
     python_requires=">=3.10",
-    entry_points={
-        "console_scripts": [
-            "tradingagents=cli.main:app",
-        ],
-    },
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Financial and Trading Industry",

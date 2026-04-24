@@ -49,3 +49,7 @@ tests/
 
 # Planning artifacts
 .planning/
+
+# No longer needed (API-based)
+scripts/
+tickers.txt

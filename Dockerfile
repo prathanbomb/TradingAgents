@@ -45,16 +45,16 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /app
 
 COPY tradingagents/ tradingagents/
-COPY scripts/ scripts/
-COPY tickers.txt ./
 
 RUN mkdir -p /app/data /app/reports /app/results /app/eval_results && \
     chown -R trading:trading /app
 
 USER trading
 
+EXPOSE 8000
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     REPORTS_OUTPUT_DIR=/app/reports
 
-CMD ["python", "scripts/run_scheduled_analysis.py"]
+CMD ["python", "-m", "tradingagents.api.main"]
