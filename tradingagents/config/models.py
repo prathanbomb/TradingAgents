@@ -56,8 +56,19 @@ class DataVendorConfig(BaseModel):
     core_stock_apis: StockVendor = "yfinance"
     technical_indicators: IndicatorVendor = "yfinance"
     fundamental_data: FundamentalVendor = "yfinance"
-    news_data: NewsVendor = "alpha_vantage"
+    news_data: str = "alpha_vantage"
     tool_overrides: Dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("news_data")
+    @classmethod
+    def validate_news_vendors(cls, v: str) -> str:
+        """Validate comma-separated news vendor list."""
+        valid = {"openai", "alpha_vantage", "google", "local"}
+        vendors = [s.strip() for s in v.split(",")]
+        for vendor in vendors:
+            if vendor not in valid:
+                raise ValueError(f"Invalid news vendor '{vendor}'. Must be one of: {valid}")
+        return v
 
     @field_validator("tool_overrides")
     @classmethod
