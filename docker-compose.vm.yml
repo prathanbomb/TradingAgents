@@ -8,7 +8,7 @@ services:
     restart: always
 
   api:
-    build: .
+    image: prathanbomb/tradingagents:latest
     command: ["python", "-m", "tradingagents.api.main"]
     ports:
       - "${API_PORT:-8000}:8000"
@@ -19,12 +19,12 @@ services:
       - DATA_CACHE_DIR=/app/data/data_cache
       - DATA_DIR=/app/data/data
       - MAX_PROMPT_CHARS=200000
-      - MAX_RECUR_LIMIT=300
     volumes:
       - app-data:/app/data
       - app-reports:/app/reports
     depends_on:
       - ollama
+    restart: always
 
 volumes:
   ollama:

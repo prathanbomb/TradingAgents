@@ -114,7 +114,7 @@ class DebateConfig(BaseModel):
 
     max_debate_rounds: int = Field(default=1, ge=1, le=10)
     max_risk_discuss_rounds: int = Field(default=1, ge=1, le=10)
-    max_recur_limit: int = Field(default=100, ge=1)
+    max_recur_limit: int = Field(default=300, ge=1)
 
 
 class GoogleSheetsConfig(BaseModel):
@@ -307,7 +307,7 @@ class TradingAgentsConfig(BaseModel):
         debate = DebateConfig(
             max_debate_rounds=config.get("max_debate_rounds", 1),
             max_risk_discuss_rounds=config.get("max_risk_discuss_rounds", 1),
-            max_recur_limit=config.get("max_recur_limit", 100),
+            max_recur_limit=config.get("max_recur_limit", 300),
         )
 
         # Handle storage config from legacy dict
@@ -447,7 +447,7 @@ class TradingAgentsConfig(BaseModel):
         debate = DebateConfig(
             max_debate_rounds=int(os.getenv("MAX_DEBATE_ROUNDS", "1")),
             max_risk_discuss_rounds=int(os.getenv("MAX_RISK_DISCUSS_ROUNDS", "1")),
-            max_recur_limit=int(os.getenv("MAX_RECUR_LIMIT", "100")),
+            max_recur_limit=int(os.getenv("MAX_RECUR_LIMIT", "300")),
         )
 
         storage = StorageConfig.from_env()
